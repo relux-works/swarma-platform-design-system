@@ -9,7 +9,7 @@ Swarma's.
 
 | Role | Family | Weights | Use |
 | --- | --- | --- | --- |
-| Display | PT Sans | 700 | Product statement, page and section headings, the interim wordmark |
+| Display | PT Sans | 700 | Product statement, page and section headings |
 | Interface | PT Sans | 400, 700 | Navigation, controls, labels, tables, captions, data |
 | Reading | PT Serif | 400, 700, italics | Long-form prose: documentation and editorial body text, lead paragraphs |
 | Technical | PT Mono | 400 | Code, identifiers, version strings, chapter references, eyebrows, compact metadata |

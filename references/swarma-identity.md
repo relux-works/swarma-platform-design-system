@@ -13,14 +13,17 @@ Source notation:
 - `book.lua:12` is a line in the book's Pandoc filter (`book/filters/book.lua`).
 - `style-guide:51` is a line in the book's Russian style guide (`editorial/style.ru.md`).
 - "ch. 02, line 5" is a line in a chapter of the Russian book (`book/ru/`).
+- `USAGE "Colors and surfaces"` is a section of the usage guide in the Swarma brand-assets
+  repository (`docs/USAGE.md` at the commit pinned in [brand-identity.md](brand-identity.md)).
 
-All paths are relative to the book sources.
+Book paths are relative to the book sources; `USAGE` refers to the brand-assets repository.
 
 ## Summary
 
 | Choice | Source | Used as |
 | --- | --- | --- |
 | PT Sans, PT Serif, PT Mono | `book/style.css:1-2`, `:70`, `:203`, `:275`, `:303`; `diagram-style:32`; `theme:5-8` | the only type family |
+| Quorum mark (owner-approved artwork) | brand-assets repository at the pinned commit; `USAGE "Composition"` | the Swarma mark in header, footer, favicon and app icons |
 | Deep blue accent `#23466e` | `book/style.css:8`; used at `:106`, `:220`, `:226`, `:235`, `:350`, `:355`, `:371` | primary accent and link |
 | Cool blue-grey neutrals | `book/style.css:5-9`, `:116`, `:310`, `:351` | page, surface and text neutrals |
 | Eight semantic roles | `diagram-style:17-28`; `theme:75-115` | a role colour layer with the diagrams' meanings |
@@ -59,6 +62,18 @@ quotation ground `#f5f7fa` (`:351`). The system's light neutrals take these valu
 they meet the contrast targets: page `#f5f7fa`, subtle surface `#eef1f5`, text `#1d2126`, muted text
 `#374151`, border `#d5d9df`. The book's muted grey `#6b7280` falls below 4.5:1 on `#eef1f5`, so
 faint text uses the diagrams' label grey `#5f6670` (`theme:80`) instead.
+
+## The Swarma mark and the interface palette
+
+The Swarma mark is not derived from the book: the owner approved the Quorum identity, and its
+artwork, exports and rules live in the brand-assets repository, which this system names and pins
+([brand-identity.md](brand-identity.md)). Its colours are Relux red `#F60D10` for the upper module,
+Relux ink `#181A18` and white. The usage guide states that these master colours are identity
+colours and do not prescribe accessible interface text or button colours (`USAGE "Colors and
+surfaces"`). The interface palette therefore stays as reviewed: the book's deep blue accent, the
+cool neutrals and the role and status layers above. The mark's red and ink do not become tokens,
+and Relux red stays out of interface colour, as it already did for the operator artwork
+([brand-identity.md](brand-identity.md), "Fixed operator values").
 
 ## Semantic roles from the diagrams
 
@@ -164,4 +179,4 @@ quotes only for real quotations, chapter titles and conditional readings, and re
 | Glow, gradients, glass | Explicitly absent from the diagrams (`diagram-style:9`) |
 | Uppercase tracked labels from the print title page | `book/style.css:104` tracks the print brand line by 0.18 em; the family rule keeps `letter-spacing: 0` on screen for multilingual consistency. Tracked uppercase stays inside the diagrams (`theme:36`) |
 | Justified, hyphenated body text | A print choice (`book/style.css:74`, `:85`); on screen it produces uneven word spacing at narrow widths, so web text is left-aligned |
-| A Swarma logo, symbol or mark | The owner draws the mark; the system leaves a slot and draws nothing (see [brand-identity.md](brand-identity.md)) |
+| A Swarma logo, symbol or mark drawn, adapted or recoloured inside this system | The owner approved the Quorum mark; its files and rules live in the brand-assets repository and are used unchanged (see [brand-identity.md](brand-identity.md)) |

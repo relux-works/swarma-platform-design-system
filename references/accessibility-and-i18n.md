@@ -82,7 +82,7 @@ Do not encode state only through hue, opacity, motion, or position.
 
 - Write alt text for the purpose of the image in its context, not a visual inventory.
 - Use empty alt text for decoration and redundant thumbnails.
-- Give the linked Swarma wordmark or mark the accessible name `Swarma` and the linked operator
+- Give the linked Swarma mark the accessible name `Swarma` and the linked operator
   logo the accessible name `Relux Works`. Name either the
   link or the SVG, and hide the other source to avoid duplicate announcements.
 - Hide a redundant decorative logo from assistive technology.
@@ -130,9 +130,10 @@ Build one logical component tree for both directions:
 - Open drawers from logical end and maintain a reading-order DOM.
 - Isolate URLs, code, email addresses, version strings, currency codes, and mixed LTR
   identifiers with `bdi`, `dir="ltr"`, or `unicode-bidi: isolate`.
-- Isolate the Swarma wordmark or mark and the Relux Works mark as LTR artwork. In forced colors, inline the bundled
-  one-color asset and apply the sanctioned `CanvasText` path-fill override from
-  [brand-identity.md](brand-identity.md). Do not use CSS mirroring or create an
+- Isolate the Swarma mark and the Relux Works mark as LTR artwork. In forced colors, the
+  Relux Works mark uses its bundled one-color asset with the sanctioned `CanvasText`
+  path-fill override; the Swarma mark uses its supplied mono or white variant and no fill
+  override ([brand-identity.md](brand-identity.md)). Do not use CSS mirroring or create an
   unapproved normal-theme variant.
 - Do not assume one RTL locale validates all others. Inspect Arabic, Persian, and
   Hebrew independently because fonts, word lengths, punctuation, and digits differ.

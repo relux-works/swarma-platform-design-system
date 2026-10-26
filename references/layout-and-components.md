@@ -47,8 +47,8 @@ Swarma components below.
 ## Identity in the page chrome
 
 **Swarma change.** Swarma owns the header; Relux Works appears in the footer as the operator. The
-Swarma mark slot is empty until the owner supplies artwork, and the text wordmark "Swarma" stands in
-for it. Placement, sizes and the operator artwork rules are in [brand-identity.md](brand-identity.md).
+header shows the approved Swarma horizontal lockup. Variants, sizes, clear space and the operator
+artwork rules are in [brand-identity.md](brand-identity.md).
 
 ## Header
 
@@ -68,8 +68,8 @@ primary action at the inline end.
 .site-header__actions { justify-self: end; }
 ```
 
-- **Swarma change:** the brand zone holds the Swarma wordmark (later the approved mark), not the
-  Relux lockup.
+- **Swarma change:** the brand zone holds the Swarma horizontal lockup, at least 160 CSS px wide
+  with its clear space, not the Relux lockup.
 - Keep the header height stable across routes, locales and active states.
 - Use a translucent material only when content scrolls under the header; otherwise a solid surface.
 - At about 1100 px, or when translated labels no longer fit, replace desktop navigation with one

@@ -4,4 +4,4 @@ interface:
   icon_small: "./assets/relux-avatar-light.svg"
   icon_large: "./assets/relux-avatar-light.svg"
   brand_color: "#23466E"
-  default_prompt: "Use $swarma-platform-design-system to apply the Swarma identity and the inherited Relux Works foundations to this web surface, including the PT type family, semantic tokens with diagram roles and statuses, accessible themes, book figures, the empty logo slot, evidence-led content, and visual QA."
+  default_prompt: "Use $swarma-platform-design-system to apply the Swarma identity and the inherited Relux Works foundations to this web surface, including the PT type family, semantic tokens with diagram roles and statuses, accessible themes, book figures, the approved Swarma mark, evidence-led content, and visual QA."

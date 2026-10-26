@@ -78,10 +78,9 @@ a modal drawer; do not mix their keyboard contracts.
 
 ## Identity artwork
 
-- Keep the Swarma wordmark, the Swarma mark once supplied, and the Relux Works operator artwork
-  static.
+- Keep the Swarma mark and the Relux Works operator artwork static.
 - Do not rotate, skew, morph, pulse, glow, draw on, or separate their elements.
-- Do not repurpose the operator's chevron or northeast arrow, or any part of the future Swarma
+- Do not repurpose the operator's chevron or northeast arrow, or any module of the Swarma
   mark, as loading, progress, redirect, or synchronization animation.
 - Apply linked-logo hover and focus feedback to its container or focus indicator; do
   not alter the artwork's geometry, spacing, or relative colors.

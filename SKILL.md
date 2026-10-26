@@ -6,8 +6,8 @@ description: >
   a fork of the Relux Works product web design system whose identity comes from the Swarma
   book. Covers the PT type family, the deep-blue accent and cool neutrals, the eight diagram
   roles and the book's status colours as semantic tokens, the dashed trust-boundary sign,
-  book figures on their white ground, the empty Swarma logo slot and the Relux Works operator
-  lockup, light/dark/high-contrast/forced-colors themes, responsive grids, motion limits,
+  book figures on their white ground, the approved Swarma Quorum mark and the Relux Works
+  operator lockup, light/dark/high-contrast/forced-colors themes, responsive grids, motion limits,
   WCAG 2.2 AA accessibility, RTL, the book's Russian copy rules, evidence-led content, agent
   discoverability, and visual QA. Russian triggers include дизайн сайта Swarma, дизайн-система
   Swarma, айдентика Swarma, шрифты PT, палитра Swarma, роли диаграмм, граница доверия, тёмная
@@ -32,7 +32,8 @@ identity choice and the candidates the system rejects.
   [foundations.md](references/foundations.md). Swarma's public surfaces are mostly documentation and
   editorial publication.
 - Find the product's design contract. It records the decisions this system leaves to the product:
-  whether book figures are shown, whether status uses colour, the interim favicon.
+  whether book figures are shown, whether status uses colour, and which Swarma brand-asset files it
+  copies from the pinned commit.
 - Treat existing user changes as intentional. Do not overwrite unrelated work.
 
 ## Establish the design contract
@@ -43,23 +44,26 @@ Before implementation, state the contract in working notes or the product reposi
 - **Primary experience:** what must be visible or usable in the first viewport.
 - **Swarma invariants:** PT type roles, the Swarma palette and tokens, the role and status layers,
   the trust-boundary sign, theme behaviour, accessibility and factual writing.
-- **Identity:** the Swarma mark slot (approved owner artwork or the interim text wordmark) and the
-  Relux Works operator placement.
+- **Identity:** the Swarma Quorum mark from the brand-assets repository at the pinned commit
+  (lockup variants, favicons and app icons) and the Relux Works operator placement.
 - **Evidence:** the book chapters, papers, figures or real interface states that make the page
   credible, and how the state of each part is sourced.
-- **Asset dependencies:** self-hosted PT font packages and subsets, figure sources, operator
-  artwork variants.
+- **Asset dependencies:** self-hosted PT font packages and subsets, figure sources, Swarma
+  brand-asset files with their manifest checksums, operator artwork variants.
 - **Validation matrix:** routes, widths, themes, languages, directions and states.
 
-Do not invent a decorative identity to fill space, and do not draw a Swarma mark.
+Do not invent a decorative identity to fill space, and do not draw, redraw or recolour a Swarma
+mark: use the approved files.
 
 ## Apply the system
 
 ### Identity
 
-- The Swarma mark slot is **AWAITING OWNER ARTWORK**. Until it is filled, Swarma is shown by the
-  text wordmark "Swarma" in PT Sans Bold. Nobody draws, traces or generates a mark, symbol, monogram
-  or placeholder. See [brand-identity.md](references/brand-identity.md).
+- The Swarma mark is the owner-approved Quorum identity. Its source of truth is the brand-assets
+  repository at the commit pinned in [brand-identity.md](references/brand-identity.md). The header
+  shows the horizontal lockup: the dark variant in dark appearances, the mono or white variant in
+  forced colours. Favicons and app icons come from the same commit. Never recreate the wordmark
+  with live text, recolour the mark or apply a CSS filter to it.
 - Swarma leads in the header. Relux Works appears as operator in the footer, with an approved SVG
   from `assets/` copied unchanged: ink lockup on light surfaces, dark lockup on dark surfaces,
   one-colour artwork under forced colours.
@@ -137,7 +141,8 @@ Read and execute [quality-assurance.md](references/quality-assurance.md):
 - Run the `axe-core` gate and the required browser and screen-reader matrix.
 - Inspect representative routes at 390, 768, 1440 and 1920 CSS px in light, dark, increased
   contrast, reduced motion and forced colours, in every supported script and direction.
-- Check the Swarma mark slot, the operator artwork, the favicon, metadata and social images.
+- Check the Swarma mark variants against the pinned files, the operator artwork, the favicon,
+  metadata and social images.
 - Check book figures in every theme, and role and status markers for their text labels.
 - Inspect screenshots yourself. A clean automated report does not prove good hierarchy.
 
@@ -145,7 +150,8 @@ Read and execute [quality-assurance.md](references/quality-assurance.md):
 
 - Swarm, hive or bee imagery, particles, node-graph or network backdrops.
 - Glow, gradient orbs, bokeh, decorative glass or one-hue washes as page structure.
-- A drawn, traced or generated Swarma logo, symbol, monogram or placeholder.
+- A drawn, traced, regenerated or recoloured Swarma mark, a live-text wordmark, a CSS filter on
+  the mark, or any Swarma symbol other than the approved Quorum files.
 - Redrawn, retyped, stretched, mirrored, animated or recoloured Relux Works artwork.
 - Role or status colours used without text, for decoration, or with a meaning the book does not
   give them.
@@ -174,8 +180,8 @@ reference marks a Swarma change. The full list is in [foundations.md](references
 - [swarma-identity.md](references/swarma-identity.md): every identity choice and its book source.
 - [foundations.md](references/foundations.md): inheritance table, invariants, archetypes, worked
   example, decision record.
-- [brand-identity.md](references/brand-identity.md): the Swarma mark slot, the interim wordmark and
-  the Relux Works operator artwork.
+- [brand-identity.md](references/brand-identity.md): the Swarma Quorum mark, its source and usage
+  rules, and the Relux Works operator artwork.
 - [typography-and-content.md](references/typography-and-content.md): PT family, licence,
   self-hosting, scale, writing and Russian copy.
 - [color-and-themes.md](references/color-and-themes.md): palette, role and status layers, themes,

@@ -230,10 +230,11 @@ review. A checklist without observed output is not test evidence.
 - Check social image crops and actual product representation.
 - Compare the footer lockup, favicon, avatar, `Organization.logo`, and social artwork
   with the approved Relux SVGs and confirm their light/dark variants agree.
-- Confirm the Swarma mark slot holds approved owner artwork or the text wordmark, and
-  that no other Swarma mark, symbol or placeholder appears on any surface.
-- Check the generated 16/32/48 px ICO and 180 × 180 px Apple touch fallback against the
-  plated light avatar.
+- Confirm every Swarma mark instance is an unchanged file from the pinned brand-assets
+  commit in the variant for its appearance, and that no other Swarma mark, symbol,
+  placeholder, filter or live-text wordmark appears on any surface.
+- Check the 16/32/48 px ICO, the 180 × 180 px Apple touch icon and the app icons against
+  the brand-assets icons set at the pinned commit.
 - Check robots behavior for intended search and answer-system crawlers without broadly
   exposing private or low-quality routes.
 - Confirm `lastmod` and release dates represent meaningful changes.
