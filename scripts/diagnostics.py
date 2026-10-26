@@ -47,8 +47,10 @@ def run_cli(main, rule):
             try:
                 deny_tokens()
             except (OSError, UnicodeError):
-                pass  # The hygiene check emits its own fixed configuration failure.
-            code = main()
+                print("configuration:0: identifier-deny-tokens: cannot load redaction policy", file=sys.stderr)
+                code = 1
+            else:
+                code = main()
         except SystemExit as error:
             code = error.code if isinstance(error.code, int) else 1
         except Exception:

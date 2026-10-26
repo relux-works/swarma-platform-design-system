@@ -21,8 +21,7 @@ def check(root):
     try:
         tokens = deny_tokens()
     except (OSError, UnicodeError):
-        tokens = []
-        errors.append("configuration:0: identifier-deny-tokens")
+        return ["configuration:0: identifier-deny-tokens"]
     ci = os.environ.get("CI", "").lower() not in {"", "0", "false"}
     if not tokens:
         if not ci:

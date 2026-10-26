@@ -33,7 +33,7 @@ class Controls(unittest.TestCase):
                                 capture_output=True, text=True, timeout=60, env=environment)
         self.assertEqual(result.returncode, 1 if rule else 0, result.stdout + result.stderr)
         if rule:
-            self.assertTrue(any(re.search(r": " + re.escape(rule) + r"(?:: |$)", line) for line in result.stdout.splitlines()), result.stdout)
+            self.assertTrue(any(re.search(r": " + re.escape(rule) + r"(?:: |$)", line) for line in (result.stdout + result.stderr).splitlines()), result.stdout + result.stderr)
             print(f"control {script}: {rule}: exit {result.returncode}")
         return result
 
@@ -397,6 +397,24 @@ try {
                 self.assertIn('[redacted]', result.stdout)
                 self.assertNotIn('zz-host-alpha', (result.stdout + result.stderr).lower())
                 self.assertNotIn('Traceback', result.stdout + result.stderr)
+
+    # An unreadable policy source prevents every check from emitting diagnostics whose values cannot be redacted.
+    def test_unreadable_policy_stops_diagnostics(self):
+        home = self.root / 'home'
+        (home / '.config/swarma-site/deny-tokens.txt').mkdir(parents=True)
+        for module in ['check_hygiene', 'check_links', 'check_contrast']:
+            with self.subTest(module=module):
+                source = ("import sys; sys.path.insert(0, " + repr(str(ROOT / 'scripts')) + "); "
+                          "import " + module + " as check; "
+                          "sys.exit(check.run_cli(lambda: print('zz-host-alpha.txt') or 0, 'check-error'))")
+                result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True,
+                                        env={**os.environ, 'HOME':str(home), 'IDENT_DENY_TOKENS':''})
+                self.assertEqual(result.returncode, 1)
+                self.assertIn('identifier-deny-tokens', result.stdout + result.stderr)
+                self.assertNotIn('zz-host-alpha', result.stdout + result.stderr)
+        (home / '.config/swarma-site/deny-tokens.txt').rmdir()
+        self.put('ordinary.txt', 'Public text')
+        self.run_check('check_hygiene.py')
 
     # Traversal errors and publication symlinks reject without exposing denied directory names or reading targets.
     def test_traversal_redaction(self):
