@@ -6,8 +6,10 @@ import os
 import re
 import sys
 from pathlib import Path
+from xml.etree.ElementTree import ParseError
 from check_common import ROOT, files, prose
 from hygiene_rules import EMAIL, IDENTIFIERS, INVOCATION_FILES, PUBLIC_INVOCATION, REPOSITORY, RUSSIAN, RUSSIAN_RULES
+from publication_values import decoded
 
 # Only generic policy definitions and the isolated controls have generic-rule exemptions.
 EXEMPT = {"scripts/hygiene_rules.py", "scripts/tests/test_ci.py"}
@@ -56,38 +58,47 @@ def check(root):
         label = redacted(relative)
         if any(token.lower() in relative.lower() for token in tokens):
             errors.append(f"{label}:0: deny-token")
+        if relative not in EXEMPT:
+            for rule, pattern in IDENTIFIERS.items():
+                if pattern.search(relative):
+                    errors.append(f"{label}:0: {rule}")
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
+            if path.suffix.lower() in {".json", ".svg", ".css", ".md", ".html", ".htm"}:
+                errors.append(f"{label}:0: publication-decode")
             continue  # Binary artwork is not prose or source text; filenames remain checked.
-        # Real literals are prohibited even in policy definitions and isolated control sources.
-        for number, line in enumerate(text.splitlines(), 1):
-            if any(token.lower() in line.lower() for token in tokens):
-                errors.append(f"{label}:{number}: deny-token")
-        if relative in EXEMPT:
-            continue
-        for rule, pattern in IDENTIFIERS.items():
-            if pattern.search(relative):
-                errors.append(f"{label}:0: {rule}")
-        for number, line in enumerate(text.splitlines(), 1):
-            for rule, pattern in IDENTIFIERS.items():
-                value = PUBLIC_INVOCATION.sub("", line) if rule == "matrix-event" and relative in INVOCATION_FILES else line
-                if pattern.search(value):
-                    errors.append(f"{label}:{number}: {rule}")
-            for match in REPOSITORY.finditer(line):
-                repository = re.sub(r"\.git$", "", match[1], flags=re.IGNORECASE)
-                if repository not in allowlist["repositories"]:
-                    errors.append(f"{label}:{number}: private-repository")
-            for match in EMAIL.finditer(line):
-                if match[0] not in allowlist["emails"]:
-                    errors.append(f"{label}:{number}: email")
-        body = prose(text)
-        if RUSSIAN.search(body):
-            for number, line in enumerate(body.splitlines(), 1):
-                for rule, pattern in RUSSIAN_RULES.items():
-                    if pattern.search(line):
-                        errors.append(f"{label}:{number}: {rule}")
-    return errors
+        body = prose(text) if path.suffix.lower() == ".md" else text
+        views = [(text, body, 1)]
+        try:
+            views.extend((value, value, 0) for value in decoded(path, text))
+        except (ValueError, ParseError):
+            errors.append(f"{label}:0: publication-decode")
+        russian = any(RUSSIAN.search(body) for _, body, _ in views)
+        for value, body, start in views:
+            # External literals are forbidden even in the exempt policy and control sources.
+            for number, line in enumerate(value.splitlines(), start):
+                if any(token.lower() in line.lower() for token in tokens):
+                    errors.append(f"{label}:{number if start else 0}: deny-token")
+                if relative in EXEMPT:
+                    continue
+                for rule, pattern in IDENTIFIERS.items():
+                    candidate = PUBLIC_INVOCATION.sub("", line) if rule == "matrix-event" and relative in INVOCATION_FILES else line
+                    if pattern.search(candidate):
+                        errors.append(f"{label}:{number if start else 0}: {rule}")
+                for match in REPOSITORY.finditer(line):
+                    repository = re.sub(r"\.git$", "", match[1], flags=re.IGNORECASE)
+                    if repository not in allowlist["repositories"]:
+                        errors.append(f"{label}:{number if start else 0}: private-repository")
+                for match in EMAIL.finditer(line):
+                    if match[0] not in allowlist["emails"]:
+                        errors.append(f"{label}:{number if start else 0}: email")
+            if russian and relative not in EXEMPT:
+                for number, line in enumerate(body.splitlines(), start):
+                    for rule, pattern in RUSSIAN_RULES.items():
+                        if pattern.search(line):
+                            errors.append(f"{label}:{number if start else 0}: {rule}")
+    return list(dict.fromkeys(errors))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,10 @@
 """Executable clean and planted controls for the repository's publication checks."""
 
 from pathlib import Path
+import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,7 +33,7 @@ class Controls(unittest.TestCase):
                                 capture_output=True, text=True, timeout=10, env=environment)
         self.assertEqual(result.returncode, 1 if rule else 0, result.stdout + result.stderr)
         if rule:
-            self.assertTrue(any(line.endswith(": " + rule) for line in result.stdout.splitlines()), result.stdout)
+            self.assertTrue(any(re.search(r": " + re.escape(rule) + r"(?:: |$)", line) for line in result.stdout.splitlines()), result.stdout)
             print(f"control {script}: {rule}: exit {result.returncode}")
         return result
 
@@ -115,11 +118,13 @@ class Controls(unittest.TestCase):
     def test_public_invocation(self):
         for path in ["agents/openai.yaml", "locales/metadata.json"]:
             with self.subTest(path=path):
-                self.put(path, "Use $swarma-platform-design-system")
+                def put_value(value):
+                    self.put(path, json.dumps(value) if path.endswith(".json") else value)
+                put_value("Use $swarma-platform-design-system")
                 self.run_check("check_hygiene.py")
-                self.put(path, "Use $swarma-platform-design-system_extra")
+                put_value("Use $swarma-platform-design-system_extra")
                 self.run_check("check_hygiene.py", "matrix-event")
-                self.put(path, "Use $swarma-platform-design-system\n$" + "A" * 24)
+                put_value("Use $swarma-platform-design-system\n$" + "A" * 24)
                 self.run_check("check_hygiene.py", "matrix-event")
                 (self.root / path).unlink()
         self.put("other.md", "$swarma-platform-design-system")
@@ -165,6 +170,9 @@ class Controls(unittest.TestCase):
                 (self.root / path).unlink()
         self.put("TASK-000000-aaaaaa.md", "Ordinary prose")
         self.run_check("check_hygiene.py", "board-id")
+        (self.root / "TASK-000000-aaaaaa.md").unlink()
+        (self.root / "TASK-000000-aaaaaa.png").write_bytes(b"\xff\x00")
+        self.run_check("check_hygiene.py", "board-id")
 
     # Existing paths, encoded/spaced/balanced names, images, references and real heading/HTML anchors resolve.
     def test_links_clean(self):
@@ -192,6 +200,185 @@ class Controls(unittest.TestCase):
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn(": " + rule + ": ", result.stdout)
                 print(f"control check_links.py: {rule}: exit {result.returncode}")
+
+    # Publication consumers decode entities, JSON strings and CSS escapes before applying identifier policy.
+    def test_decoded_identifier_values(self):
+        cases = [
+            ("probe.md", "Русский &#64;reader:example.org", "matrix-user"),
+            ("probe.md", "Русский &commat;reader:example.org", "matrix-user"),
+            ("probe.md", '<a title="&#64;reader:example.org">Text</a>', "matrix-user"),
+            ("probe.md", "[Target](/&#85;sers/reader/file)", "local-path"),
+            ("probe.md", "[Target](%2FUsers%2Freader%2Ffile)", "local-path"),
+            ("probe.svg", '<svg xmlns="http://www.w3.org/2000/svg"><text>&#x40;reader:example.org</text></svg>', "matrix-user"),
+            ("probe.svg", '<svg xmlns="http://www.w3.org/2000/svg" aria-label="&#64;reader:example.org"/>', "matrix-user"),
+            ("probe.svg", '<svg xmlns="http://www.w3.org/2000/svg"><title>&#64;reader:example.org</title></svg>', "matrix-user"),
+            ("probe.svg", '<svg xmlns="http://www.w3.org/2000/svg"><desc>&#64;reader:example.org</desc></svg>', "matrix-user"),
+            ("probe.json", r'{"label":"\u0040reader:example.org"}', "matrix-user"),
+            ("probe.json", r'{"\u0040reader:example.org":["Text"]}', "matrix-user"),
+            ("probe.css", r'p::after { content: "\40 reader:example.org"; }', "matrix-user"),
+            ("probe.css", r'p::after { content: "\000040reader:example.org"; }', "matrix-user"),
+            ("probe.css", r'p::after { content: "\@reader:example.org"; }', "matrix-user"),
+            ("probe.css", 'p::after { content: "\\40 rea\\\nder:example.org"; }', "matrix-user"),
+            ("probe.css", r'p { background: url("\2f Users/reader/file"); }', "local-path"),
+            ("probe.css", 'p { background: url("%2FUsers%2Freader%2Ffile"); }', "local-path"),
+            ("probe.css", 'p { background: url(%2FUsers%2Freader%2Ffile); }', "local-path"),
+            ("probe.css", 'p {content:"zz-host-" "alpha"}', "deny-token"),
+            ("probe.svg", '<svg xmlns="http://www.w3.org/2000/svg"><style>p {content:"\\40 reader:example.org"}</style></svg>', "matrix-user"),
+        ]
+        for path, value, rule in cases:
+            with self.subTest(path=path, value=value):
+                clean = {".md": "Swarma &#38; text", ".svg": "<svg><text>Swarma &#38; text</text></svg>",
+                         ".json": r'{"label":"\u0053warma"}', ".css": r'p {content:"\53 warma"}'}
+                self.put(path, clean[Path(path).suffix])
+                self.run_check("check_hygiene.py")
+                self.put(path, value)
+                self.run_check("check_hygiene.py", rule)
+                (self.root / path).unlink()
+
+    # The external list and prose rules apply after each format's own decoding, with adjacent valid controls.
+    def test_decoded_external_tokens_and_punctuation(self):
+        cases = [
+            ("probe.md", "zz-host-&#97;lpha", "Русский &#171;текст&#187;", "Swarma &#38; текст"),
+            ("probe.svg", '<svg><text>zz-host-&#97;lpha</text></svg>', '<svg><text>Русский &#171;текст&#187;</text></svg>', '<svg><text>Swarma &#38; текст</text></svg>'),
+            ("probe.json", r'{"label":"zz-host-\u0061lpha"}', r'{"label":"Русский \u00abтекст\u00bb"}', r'{"label":"\u0053warma"}'),
+            ("probe.css", r'p {content:"zz-host-\61 lpha"}', r'p {content:"Русский \ab текст\bb "}', r'p {content:"\53 warma"}'),
+        ]
+        for path, token, punctuation, clean in cases:
+            with self.subTest(path=path):
+                self.put(path, clean)
+                self.run_check("check_hygiene.py")
+                self.put(path, token)
+                self.run_check("check_hygiene.py", "deny-token")
+                self.put(path, punctuation)
+                self.run_check("check_hygiene.py", "russian-guillemets")
+                (self.root / path).unlink()
+        self.put("probe.json", r'{"label":"Русский \u2014 текст"}')
+        self.run_check("check_hygiene.py", "russian-dash")
+
+    # Decoding follows the consumer once; CSS/JSON entity-looking text and encoded Markdown code stay literal.
+    def test_decoding_context_boundaries(self):
+        for path, value in [
+            ("probe.md", "&amp;#64;reader:example.org\n`Русский &#171;код&#187;`"),
+            ("probe.css", r'p {content:"\26 #64;reader:example.org"}'),
+            ("probe.json", '{"label":"&#64;reader:example.org"}'),
+            ("probe.svg", '<svg><text>&amp;#64;reader:example.org</text></svg>'),
+        ]:
+            with self.subTest(path=path):
+                self.put(path, value)
+                self.run_check("check_hygiene.py")
+                (self.root / path).unlink()
+        # Backticks in metadata are rendered text, not a Markdown code exemption.
+        self.put("probe.json", r'{"label":"`Русский \u00abтекст\u00bb`"}')
+        self.run_check("check_hygiene.py", "russian-guillemets")
+
+    # Malformed supported formats cannot silently skip the decoded-value policy.
+    def test_publication_decode_errors(self):
+        for path, value in [("probe.json", '{"label":'), ("probe.svg", '<svg><text>'),
+                            ("probe.css", 'p {content:"unfinished}'), ("probe.css", '/* unfinished')]:
+            with self.subTest(path=path):
+                self.put(path, value)
+                self.run_check("check_hygiene.py", "publication-decode")
+                (self.root / path).unlink()
+
+    # Fenced and inline code supply neither HTML IDs nor links; real headings and HTML/SVG IDs still resolve.
+    def test_code_only_anchors(self):
+        self.put("page.md", "[Target](target.md#ghost)")
+        for code in ['```html\n<div id="ghost">Example</div>\n```\n', '`<div id="ghost">Example</div>`\n',
+                     '~~~html\n<div id="ghost">Example</div>\n~~~\n', '``<div id="ghost">Example</div>``\n']:
+            with self.subTest(code=code):
+                self.put("target.md", "# Actual `heading`\n\n" + code)
+                self.run_check("check_links.py", "markdown-anchor")
+                self.put("target.md", '# Ghost\n\n' + code)
+                self.run_check("check_links.py")
+        self.put("target.md", '# Actual `heading`\n\n<a id="ghost"></a>\n')
+        self.run_check("check_links.py")
+        self.put("page.md", "[Target](target.md#actual-heading)\n`[Ignored](missing.md)`\n```md\n[Ignored](absent.md)\n```")
+        self.run_check("check_links.py")
+        for path in ["target.html", "target.svg"]:
+            self.put(path, '<svg id="literal"><text>`code`</text></svg>')
+            self.put("page.md", f"[Literal]({path}#literal)")
+            self.run_check("check_links.py")
+
+    def contrast(self, css, diagnostic=None, report=False):
+        self.put("tokens.css", css)
+        command = [sys.executable, str(ROOT / "scripts/check_contrast.py"), str(self.root / "tokens.css")]
+        if report:
+            command += ["--report", str(self.root / "report.md")]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 1 if diagnostic else 0, result.stdout + result.stderr)
+        if diagnostic:
+            self.assertRegex(result.stdout + result.stderr, diagnostic)
+            print(f"control contrast: {diagnostic}: exit {result.returncode}")
+        return result
+
+    # Actual late root declarations change measured contrast; earlier superseded declarations and comments do not.
+    def test_contrast_root_cascade(self):
+        css = (ROOT / "assets/tokens.css").read_text()
+        plant = ':root { --color-text: #ffffff; --color-bg: #ffffff; }'
+        self.contrast(css + plant, r"FAIL light\s+text on bg\s+1\.00")
+        self.contrast(plant + css)
+        self.contrast(css + '/* ' + plant + ' */', report=True)
+        self.assertEqual((self.root / "report.md").read_text(), (ROOT / "references/contrast-report.md").read_text())
+
+    # Media selection, reduced transparency, important precedence and variable resolution affect the measured values.
+    def test_contrast_media_important_and_variables(self):
+        css = (ROOT / "assets/tokens.css").read_text()
+        plant = ':root { --color-text: #ffffff; --color-bg: #ffffff; }'
+        dark = self.contrast(css + '@media (prefers-color-scheme: dark) {' + plant + '}', r"FAIL dark\s+text on bg\s+1\.00")
+        self.assertRegex(dark.stdout, r"PASS light\s+text on bg")
+        self.contrast(css + '@media (prefers-reduced-transparency: reduce) {' + plant + '}', r"FAIL light/reduced\s+text on bg\s+1\.00")
+        important = re.sub(r'(--color-[\w-]+:\s*[^;]+);', r'\1 !important;', css)
+        self.contrast(important + plant)
+        self.contrast(css + ':root {--color-text:#ffffff !important;--color-bg:#ffffff !important;}'
+                      + ':root {--color-text:#000000;}', r"FAIL light\s+text on bg\s+1\.00")
+        self.contrast(css + ':root {--color-text:var(--missing,var(--color-text-muted));}')
+        self.contrast(css + ':root { --probe: #ffffff; --color-text: var(--probe); --color-bg: var(--probe); }', r"FAIL light\s+text on bg\s+1\.00")
+
+    # Forced colors are checked against symbolic system roles, not invented numeric OS color values.
+    def test_contrast_forced_colors(self):
+        css = (ROOT / "assets/tokens.css").read_text()
+        self.contrast(css)
+        self.contrast(css + '@media (forced-colors: active) {:root {--color-text: Canvas;}}', r"forced-color-role")
+
+    # Unknown cascade constructs and unresolved colors reject explicitly rather than producing misleading passing ratios.
+    def test_contrast_unsupported_contract(self):
+        css = (ROOT / "assets/tokens.css").read_text()
+        for plant in ['body {--color-text:#ffffff;}', '@layer extra {:root {--color-text:#ffffff;}}',
+                      '@supports (display:grid) {:root {--color-text:#ffffff;}}', '@import "other.css";',
+                      ':root {--color-text:var(--missing);}', ':root {--color-text:var(--color-text);}',
+                      ':root {--color-text:light-dark(white,black);}', ':root {--color-text:#ffffff;',
+                      ': root {--color-text:#ffffff;}', '@ media (prefers-color-scheme: dark) {}',
+                      '@media ("prefers-color-scheme": dark) {}',
+                      ':root {--color-text:rgba(0,0,0,2);}', ':root {--color-text:#ffffff #000000;}',
+                      ':root {--color-text:rgb/**/(0,0,0);}', ':root {--color-text:rgba(0,0,0,0 . 1);}',
+                      ':root {--color-text:Canvas/**/Text;}']:
+            with self.subTest(plant=plant):
+                self.contrast(css + plant, r"contrast-css:")
+
+    # Real production scripts reject the review witnesses in a complete source copy, with a clean-copy control first.
+    def test_complete_repository_regressions(self):
+        publication = self.root / "publication"
+        shutil.copytree(ROOT, publication, ignore=shutil.ignore_patterns(".temp", ".git", "__pycache__"))
+        environment = {**os.environ, "IDENT_DENY_TOKENS": "zz" + "-integration-alpha", "CI": "true"}
+
+        def invoke(script, rule=None):
+            result = subprocess.run([sys.executable, str(publication / "scripts" / script)], cwd=publication,
+                                    env=environment, capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 1 if rule else 0, result.stdout + result.stderr)
+            if rule:
+                self.assertIn(rule, result.stdout + result.stderr)
+
+        for script in ["check_hygiene.py", "check_links.py", "check_contrast.py"]:
+            invoke(script)
+        (publication / "references/encoded.md").write_text("Русский &#64;reader:example.org\nzz-integration-&#97;lpha")
+        invoke("check_hygiene.py", "matrix-user")
+        invoke("check_hygiene.py", "deny-token")
+        (publication / "references/encoded.md").write_text('[Ghost](target.md#ghost)')
+        (publication / "references/target.md").write_text('```html\n<div id="ghost"></div>\n```')
+        invoke("check_links.py", "markdown-anchor")
+        with (publication / "assets/tokens.css").open("a") as file:
+            file.write(':root {--color-text:#ffffff;--color-bg:#ffffff;}')
+        invoke("check_contrast.py", "FAIL light")
 
 
 if __name__ == "__main__":

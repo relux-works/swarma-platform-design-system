@@ -47,10 +47,12 @@ class IDs(HTMLParser):
         self.links.extend((self.getpos()[0], value) for key, value in attrs if key in {"href", "src"} and value is not None)
 
 
-def anchors(text):
+def anchors(text, markdown=True):
     parser = IDs()
-    parser.feed(text)
+    parser.feed(prose(text) if markdown else text)
     found, counts = parser.values, {}
+    if not markdown:
+        return found
     previous = ""
     for line in prose(text, inline=False).splitlines():
         heading = re.match(r"^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
@@ -101,7 +103,7 @@ def check(root):
             if not target.is_relative_to(root) or not target.exists():
                 errors.append(f"{location}: markdown-link: missing local target")
             elif url.fragment and target.suffix.lower() in {".md", ".html", ".htm", ".svg"}:
-                if unquote(url.fragment) not in anchors(target.read_text(encoding="utf-8")):
+                if unquote(url.fragment) not in anchors(target.read_text(encoding="utf-8"), target.suffix.lower() == ".md"):
                     errors.append(f"{location}: markdown-anchor: missing local fragment")
     return errors
 
