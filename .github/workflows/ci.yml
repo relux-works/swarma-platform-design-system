@@ -8,15 +8,13 @@ permissions:
 jobs:
   check:
     name: check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, swarma-ci]
     env:
       PYTHONDONTWRITEBYTECODE: '1'
-      IDENT_DENY_TOKENS: ${{ secrets.IDENT_DENY_TOKENS }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Python version
+        run: python3 -c 'import sys; print(sys.version.split()[0]); assert sys.version_info[:2] == (3, 14)'
       - name: Contrast
         run: python3 scripts/check_contrast.py
       - name: Contrast negative control
@@ -33,6 +31,14 @@ jobs:
       - name: Hygiene and link controls
         run: python3 -m unittest discover -s scripts/tests -v
       - name: Repository hygiene
-        run: python3 scripts/check_hygiene.py
+        shell: bash
+        env:
+          IDENT_DENY_TOKENS: ${{ secrets.IDENT_DENY_TOKENS }}
+        run: |
+          if [[ -z "${IDENT_DENY_TOKENS//[[:space:],]/}" ]]; then
+            echo "IDENT_DENY_TOKENS must contain a nonempty token list" >&2
+            exit 1
+          fi
+          python3 scripts/check_hygiene.py
       - name: Markdown links
         run: python3 scripts/check_links.py

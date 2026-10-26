@@ -7,6 +7,7 @@ Start with [SKILL.md](SKILL.md) and its resource map. The design provenance is r
 ## Tools and checks
 
 All checks use Python 3.12 or newer and its standard library. No package installation is needed.
+CI uses self-hosted Linux x64 runners and asserts Python 3.14 from PATH.
 Run these commands from the repository root:
 
 | Tool / command | Purpose | Output |
@@ -83,8 +84,9 @@ The external list applies to filenames and all UTF-8 sources, including the poli
 from generic rules. Diagnostics report rule names and redact matching filenames, never token values.
 Keep real tokens out of source, fixtures, documentation, command arguments and logs.
 
-Configure the repository secret `IDENT_DENY_TOKENS` before CI; the workflow supplies it to the check job.
-CI fails if neither source provides a nonempty list, regardless of `IDENT_DENY_TOKENS_OPTIONAL`.
+Configure the repository secret `IDENT_DENY_TOKENS` before CI; the workflow supplies it only to the repository hygiene step.
+That step rejects an empty or delimiter-only secret before running hygiene, without using a local-file fallback.
+CI requires a nonempty repository secret, regardless of `IDENT_DENY_TOKENS_OPTIONAL`.
 Locally, missing tokens print a warning, run the generic checks and exit nonzero by default.
 For an explicit generic-only local run, use:
 
