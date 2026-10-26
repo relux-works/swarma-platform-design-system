@@ -19,6 +19,10 @@ def compact(value):
     return SPACES.sub("", unformatted(value))
 
 
+def ascii_fold(value):
+    return value.translate(str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"))
+
+
 def candidates(value, *, separator_free=True):
     # Preserve word boundaries around a wrapped identifier before also trying the fully compact form.
     unwrapped = re.sub(r"[ \t]*\r?\n[ \t]*", "", unformatted(value))
@@ -27,8 +31,8 @@ def candidates(value, *, separator_free=True):
 
 
 def token_match(value, tokens):
-    normal, joined = normalized(value).casefold(), compact(value).casefold()
-    return any(normalized(token).casefold() in normal or compact(token).casefold() in joined
+    normal, joined = ascii_fold(normalized(value)), ascii_fold(compact(value))
+    return any(ascii_fold(normalized(token)) in normal or ascii_fold(compact(token)) in joined
                for token in tokens if compact(token))
 
 
@@ -40,16 +44,16 @@ def match_views(value, start=0, *, join_lines=True):
 
 
 def redact(value, tokens):
-    # Map the same separator-free casefold used by the verdict back to original character spans.
+    # Map the same separator-free ASCII comparison back to original character spans.
     folded, positions = [], []
     for index, letter in enumerate(value):
         if compact(letter):
-            units = letter.casefold()
+            units = ascii_fold(letter)
             folded.extend(units)
             positions.extend([index] * len(units))
     joined, spans = "".join(folded), []
     for token in set(tokens):
-        needle, offset = compact(token).casefold(), 0
+        needle, offset = ascii_fold(compact(token)), 0
         if not needle:
             continue
         while (found := joined.find(needle, offset)) >= 0:

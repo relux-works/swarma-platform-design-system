@@ -6,25 +6,31 @@ import os
 from pathlib import Path
 import re
 import sys
-from publication_policy import compact, redact
+from publication_policy import redact
 
 _loaded = []
 
 
 def split(text):
-    return [token.strip() for token in re.split(r"[,\r\n]+", text) if compact(token)]
+    tokens = [token.strip(" \t\r\n\v\f") for token in re.split(r"[,\r\n]+", text)]
+    tokens = [token for token in tokens if token]
+    if not tokens or any(not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,}", token) for token in tokens):
+        raise ValueError("identifier-deny-tokens")
+    return tokens
 
 
 def ci_tokens():
-    return [token for token in split(os.environ.get("IDENT_DENY_TOKENS", "")) if len(compact(token)) >= 3]
+    return split(os.environ.get("IDENT_DENY_TOKENS", ""))
 
 
 def deny_tokens():
     global _loaded
+    _loaded = []
+    explicit = os.environ.get("IDENT_DENY_TOKENS", "")
     if os.environ.get("CI", "").lower() not in {"", "0", "false"}:
-        _loaded = ci_tokens()
+        _loaded = ci_tokens() if explicit else []
         return _loaded
-    _loaded = split(os.environ.get("IDENT_DENY_TOKENS", ""))
+    _loaded = split(explicit) if explicit else []
     if not _loaded:
         try:
             _loaded = split((Path.home() / ".config/swarma-site/deny-tokens.txt").read_text(encoding="utf-8"))
@@ -34,7 +40,11 @@ def deny_tokens():
 
 
 def redacted(text):
-    return redact(text, _loaded + split(os.environ.get("IDENT_DENY_TOKENS", "")))
+    try:
+        explicit = ci_tokens()
+    except ValueError:
+        explicit = []
+    return redact(text, _loaded + explicit)
 
 
 def unexpected(_kind, _error, _traceback):
@@ -52,7 +62,7 @@ def run_cli(main, rule):
         try:
             try:
                 deny_tokens()
-            except (OSError, UnicodeError):
+            except (OSError, UnicodeError, ValueError):
                 print("configuration:0: identifier-deny-tokens: cannot load redaction policy", file=sys.stderr)
                 code = 1
             else:

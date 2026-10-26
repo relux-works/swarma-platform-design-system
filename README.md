@@ -105,7 +105,10 @@ Generic rules cover Matrix IDs, board IDs, local paths, session URLs and workpla
 Repository links and email addresses require exact entries in `config/public-repos.json`.
 Real internal names come from `IDENT_DENY_TOKENS` (comma-separated literals), or the untracked file
 `$HOME/.config/swarma-site/deny-tokens.txt` (one literal per line; commas are also accepted).
-A nonempty environment list takes precedence over the file locally. Literal matching case-folds both sides,
+A nonempty environment list takes precedence over the file locally. Every token must match
+`[a-z0-9][a-z0-9._-]{2,}` in full after trimming ASCII whitespace; one invalid entry or an empty configured
+file rejects with fixed `identifier-deny-tokens` diagnostics without echoing the value. Matching folds ASCII
+uppercase only; Unicode case folding is not performed. Literal matching
 removes Unicode format characters and collapses Unicode whitespace (including line breaks and NBSP),
 then also compares separator-free forms. Generic identifier patterns use the same normalizer,
 including separator-free and unwrapped forms. Source and rendered paragraph boundaries remain
@@ -119,9 +122,9 @@ from generic rules. Diagnostics report rule names and redact matching filenames,
 Keep real tokens out of source, fixtures, documentation, command arguments and logs.
 
 Configure the repository secret `IDENT_DENY_TOKENS` before CI; the workflow supplies it only to the repository hygiene step.
-That step runs `python3 scripts/check_ci_tokens.py` before hygiene. The shared guard removes Unicode
-whitespace and format characters, then requires at least one token of three or more remaining characters.
-CI uses only usable tokens from the explicit secret and never reads the local fallback file,
+That step runs `python3 scripts/check_ci_tokens.py` before hygiene. The shared guard enforces the same ASCII-only grammar for every entry. Greek letters, invisible characters,
+NBSP and uppercase entries reject; the explicit list must be nonempty.
+CI uses only a valid explicit secret and never reads the local fallback file,
 regardless of `IDENT_DENY_TOKENS_OPTIONAL`.
 Locally, missing tokens print a warning, run the generic checks and exit nonzero by default.
 For an explicit generic-only local run, use:

@@ -39,7 +39,7 @@ class Controls(unittest.TestCase):
 
     # Ordinary reflow and invisible separators cannot conceal a literal; paragraph and code boundaries stay separate.
     def test_rendered_whitespace_policy(self):
-        environment = {"IDENT_DENY_TOKENS": "zz reviewer omega"}
+        environment = {"IDENT_DENY_TOKENS": "zzrevieweromega"}
         for value in ["zz reviewer\nomega", "zz reviewer  omega", "zz reviewer\u00a0omega",
                       "zz review\u200der omega", "zz reviewer  \nomega", "zz **reviewer**\nomega",
                       "zzrevieweromega"]:
@@ -63,7 +63,7 @@ class Controls(unittest.TestCase):
 
     # Hidden ARIA references are resolved by Chromium, including descriptions, roles absent from snapshots, and SVG.
     def test_full_accessibility_values(self):
-        environment = {"IDENT_DENY_TOKENS": "zz reviewer omega"}
+        environment = {"IDENT_DENY_TOKENS": "zzrevieweromega"}
         for suffix in ["md", "html", "svg"]:
             for attribute in ["aria-labelledby", "aria-describedby"]:
                 with self.subTest(suffix=suffix, attribute=attribute):
@@ -109,7 +109,7 @@ class Controls(unittest.TestCase):
 
     # Normalized denied basenames and split diagnostic writes redact without disclosing compact or spaced forms.
     def test_normalized_diagnostic_redaction(self):
-        token = "zz reviewer omega"
+        token = "zzrevieweromega"
         name = "zz\u200breviewer\u200domega.txt"
         self.put(name, "Public text")
         result = self.run_check("check_hygiene.py", "deny-token", {"IDENT_DENY_TOKENS":token})
@@ -126,18 +126,18 @@ class Controls(unittest.TestCase):
                   "from diagnostics import run_cli; "
                   "sys.exit(run_cli(lambda: print('ZZ STRASSE') or 0, 'check-error'))")
         result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True,
-                                env={**os.environ, 'IDENT_DENY_TOKENS':'zz straße'})
+                                env={**os.environ, 'IDENT_DENY_TOKENS':'zzstrasse'})
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout.strip(), "[redacted]")
 
     # A synthetic literal fails only when configured, including case variants and punctuation.
     def test_external_tokens(self):
-        self.put("sample.txt", "ZZ-HOST-ALPHA and zz.host+alpha")
+        self.put("sample.txt", "ZZ-HOST-ALPHA and zz.host_alpha")
         self.run_check("check_hygiene.py", "deny-token")
         self.run_check("check_hygiene.py", env={"IDENT_DENY_TOKENS": "zz-host-beta"})
-        self.run_check("check_hygiene.py", "deny-token", {"IDENT_DENY_TOKENS": " , zz.host+alpha, "})
+        self.run_check("check_hygiene.py", "deny-token", {"IDENT_DENY_TOKENS": " , zz.host_alpha, "})
         self.put("sample.txt", "zzXhosttalpha")
-        self.run_check("check_hygiene.py", env={"IDENT_DENY_TOKENS": "zz.host+alpha"})
+        self.run_check("check_hygiene.py", env={"IDENT_DENY_TOKENS": "zz.host_alpha"})
 
     # External tokens cover normally exempt policy sources and filenames without echoing values.
     def test_external_scope_and_redaction(self):
@@ -161,6 +161,30 @@ class Controls(unittest.TestCase):
         self.run_check("check_hygiene.py", env={**env, "IDENT_DENY_TOKENS": "zz-host-gamma"})
         self.put("sample.txt", "Ordinary text")
         self.run_check("check_hygiene.py", env=env)
+
+    # Local files use the same strict ASCII grammar; invalid policy fails before any publication diagnostic.
+    def test_ascii_policy_sources(self):
+        home = self.root / "home"
+        policy = home / ".config/swarma-site/deny-tokens.txt"
+        policy.parent.mkdir(parents=True)
+        publication = self.root / "publication"
+        publication.mkdir()
+        self.root = publication
+        self.put("probe.txt", "Public text")
+        for token in ["", "ΟΣ", "\u200d", "\u00a0zz-token", "zz-token\u2028", "ZZ-HOST-ALPHA", "zz-valid,ΟΣ", "zz token"]:
+            policy.write_text(token)
+            for script in ["check_hygiene.py", "check_links.py", "check_contrast.py"]:
+                result = self.run_check(script, "identifier-deny-tokens", {"HOME":str(home), "IDENT_DENY_TOKENS":"", "CI":""})
+                self.assertEqual(result.stderr.strip(), "configuration:0: identifier-deny-tokens: cannot load redaction policy")
+                self.assertNotIn("ΟΣ", result.stdout + result.stderr)
+            # A usable explicit CI policy must not read even this invalid ambient policy file.
+            self.run_check("check_hygiene.py", env={"HOME":str(home), "IDENT_DENY_TOKENS":"zz-other-policy", "CI":"true"})
+        policy.write_text("zz-host-alpha\nzz_host.beta0\n")
+        self.run_check("check_hygiene.py", env={"HOME":str(home), "IDENT_DENY_TOKENS":"", "CI":""})
+        self.put("ZZ-HOST-ALPHA report.txt", "Public text")
+        result = self.run_check("check_hygiene.py", "deny-token")
+        self.assertNotIn("ZZ-HOST-ALPHA", result.stdout + result.stderr)
+        self.assertIn("[redacted]", result.stdout + result.stderr)
 
     # Every generic family rejects invisible and line-wrapped identifiers, with adjacent valid controls.
     def test_generic_normalization(self):
@@ -225,27 +249,26 @@ class Controls(unittest.TestCase):
         publication = self.root / "publication"
         publication.mkdir()
         environment = {**os.environ, "HOME": str(self.root / "home"), "CI": "true", "IDENT_DENY_TOKENS_OPTIONAL": "1"}
-        for token in ["", " , \n", "\u200d", "\u00a0", "\u00ad\u2060\ufeff", "a\u200db", "a\u00a0b", "at"]:
+        for token in ["", " , \n", "\u200d", "\u00a0", "\u00ad\u2060\ufeff", "a\u200db", "a\u00a0b", "at", "ΟΣ", "ZZ-HOST-ALPHA", "zz-valid,ΟΣ", "zz token", "\u00a0zz-token", "zz-token\u2028"]:
             with self.subTest(token=repr(token)):
                 result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", command], cwd=self.root,
                                         env={**environment, "IDENT_DENY_TOKENS":token}, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn("identifier-deny-tokens", result.stdout + result.stderr)
                 self.assertNotIn("zz-ambient-policy", result.stdout + result.stderr)
-                if token == "at":
-                    self.assertNotIn(token, result.stdout + result.stderr)
+                self.assertEqual(result.stderr.strip(), "configuration:0: identifier-deny-tokens")
                 self.run_check("check_hygiene.py", "identifier-deny-tokens", {**environment, "IDENT_DENY_TOKENS":token})
         # Use a real scan, rather than a stub, for the workflow's valid secret control.
         shutil.copytree(ROOT / "scripts", publication / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
         valid = "q" + "xz"
-        for token in [valid, "q\u200dx\u00a0z", " , " + valid + "\n"]:
+        for token in [valid, " \t" + valid + "\f", " , " + valid + "\n"]:
             result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", command], cwd=publication,
                                     env={**environment, "IDENT_DENY_TOKENS":token}, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     # Linked and inline CSS yield the same AX verdict; imports/base/local assets load and missing dependencies reject.
     def test_linked_stylesheet_accessibility(self):
-        environment = {"IDENT_DENY_TOKENS": "zz review omega"}
+        environment = {"IDENT_DENY_TOKENS": "zzreviewomega"}
         self.put("styles/entry.css", '@import "nested/generated.css";')
         style = 'button::before {content:attr(data-prefix) " " attr(data-suffix)}'
         self.put("styles/nested/generated.css", style)
