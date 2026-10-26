@@ -10,7 +10,7 @@ from pathlib import Path
 from check_common import ROOT, files
 from hygiene_rules import EMAIL, IDENTIFIERS, INVOCATION_FILES, PUBLIC_INVOCATION, REPOSITORY, RUSSIAN, RUSSIAN_RULES
 from publication_values import MARKUP, documents, strings
-from publication_policy import compact, match_views, normalized, redact, token_match
+from publication_policy import candidates, match_views, normalized, redact, token_match, unformatted
 
 # Only generic policy definitions and the isolated controls have generic-rule exemptions.
 EXEMPT = {"scripts/hygiene_rules.py", "scripts/tests/test_ci.py"}
@@ -47,7 +47,7 @@ def check(root):
             errors.append(f"{relative}:0: deny-token")
         if relative not in EXEMPT:
             for rule, pattern in IDENTIFIERS.items():
-                if any(pattern.search(candidate) for candidate in [normalized(relative), compact(relative)]):
+                if any(pattern.search(candidate) for candidate in candidates(relative)):
                     errors.append(f"{relative}:0: {rule}")
         try:
             text = path.read_text(encoding="utf-8")
@@ -60,7 +60,7 @@ def check(root):
                 errors.append(f"{relative}:0: publication-encoding")
         except OSError:
             errors.append(f"{relative}:0: identifier-scan: cannot read publication")
-    rendered = documents([(path, text) for path, text in records if path.suffix.lower() in MARKUP], rendered=True)
+    rendered = documents([(path, text) for path, text in records if path.suffix.lower() in MARKUP], rendered=True, root=root)
     for path, text in records:
         relative = path.relative_to(root).as_posix()
         label = redacted(relative)
@@ -81,26 +81,30 @@ def check(root):
         russian = any(RUSSIAN.search(body) for _, body, _ in views)
         for value, body, start in views:
             # External literals are forbidden even in the exempt policy and control sources.
-            for line, number in match_views(value, start):
+            # Raw structured records stay on their source lines; decoded JSON values are independent views.
+            join_lines = not (start and path.suffix.lower() in {".json", ".yaml", ".yml"})
+            for line, number in match_views(value, start, join_lines=join_lines):
                 if token_match(line, tokens):
                     errors.append(f"{label}:{number if start else 0}: deny-token")
                 if relative in EXEMPT:
                     continue
                 for rule, pattern in IDENTIFIERS.items():
-                    candidate = PUBLIC_INVOCATION.sub("", line) if rule == "matrix-event" and relative in INVOCATION_FILES else line
-                    if pattern.search(candidate):
+                    candidate = PUBLIC_INVOCATION.sub("", unformatted(line)) if rule == "matrix-event" and relative in INVOCATION_FILES else line
+                    if any(pattern.search(view) for view in candidates(candidate)):
                         errors.append(f"{label}:{number if start else 0}: {rule}")
-                for match in REPOSITORY.finditer(normalized(line)):
-                    repository = re.sub(r"\.git$", "", match[1], flags=re.IGNORECASE)
-                    if repository not in allowlist["repositories"]:
-                        errors.append(f"{label}:{number if start else 0}: private-repository")
-                for match in EMAIL.finditer(normalized(line)):
-                    if match[0] not in allowlist["emails"]:
-                        errors.append(f"{label}:{number if start else 0}: email")
+                # Exact allowlist entries retain surrounding word boundaries, including adjacent public entries.
+                for candidate in candidates(line, separator_free=False):
+                    for match in REPOSITORY.finditer(candidate):
+                        repository = re.sub(r"\.git$", "", match[1], flags=re.IGNORECASE)
+                        if repository not in allowlist["repositories"]:
+                            errors.append(f"{label}:{number if start else 0}: private-repository")
+                    for match in EMAIL.finditer(candidate):
+                        if match[0] not in allowlist["emails"]:
+                            errors.append(f"{label}:{number if start else 0}: email")
             if russian and relative not in EXEMPT:
                 for line, number in match_views(body, start):
                     for rule, pattern in RUSSIAN_RULES.items():
-                        if pattern.search(line):
+                        if pattern.search(normalized(line)):
                             errors.append(f"{label}:{number if start and info is None else 0}: {rule}")
     return list(dict.fromkeys(redacted(error) for error in errors))
 

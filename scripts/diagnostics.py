@@ -15,8 +15,15 @@ def split(text):
     return [token.strip() for token in re.split(r"[,\r\n]+", text) if compact(token)]
 
 
+def ci_tokens():
+    return [token for token in split(os.environ.get("IDENT_DENY_TOKENS", "")) if len(compact(token)) >= 3]
+
+
 def deny_tokens():
     global _loaded
+    if os.environ.get("CI", "").lower() not in {"", "0", "false"}:
+        _loaded = ci_tokens()
+        return _loaded
     _loaded = split(os.environ.get("IDENT_DENY_TOKENS", ""))
     if not _loaded:
         try:

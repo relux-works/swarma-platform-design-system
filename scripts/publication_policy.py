@@ -1,19 +1,29 @@
 """Canonical publication matching and redaction, retaining paragraph boundaries."""
 
 import re
+import unicodedata
 
-# Include non-spacing format characters commonly introduced by editing and copy/paste.
-SEPARATORS = r"[\s\u180e\u200b-\u200d\u2060\ufeff]"
-SPACES = re.compile(SEPARATORS + "+")
+SPACES = re.compile(r"\s+")
 PARAGRAPH = re.compile(r"\n[\t \r]*\n+")
 
 
+def unformatted(value):
+    return "".join(letter for letter in value if unicodedata.category(letter) != "Cf")
+
+
 def normalized(value):
-    return SPACES.sub(" ", value).strip()
+    return SPACES.sub(" ", unformatted(value)).strip()
 
 
 def compact(value):
-    return SPACES.sub("", value)
+    return SPACES.sub("", unformatted(value))
+
+
+def candidates(value, *, separator_free=True):
+    # Preserve word boundaries around a wrapped identifier before also trying the fully compact form.
+    unwrapped = re.sub(r"[ \t]*\r?\n[ \t]*", "", unformatted(value))
+    views = (normalized(value), normalized(unwrapped))
+    return tuple(dict.fromkeys(views + ((compact(value),) if separator_free else ())))
 
 
 def token_match(value, tokens):
@@ -22,18 +32,18 @@ def token_match(value, tokens):
                for token in tokens if compact(token))
 
 
-def match_views(value, start=0):
+def match_views(value, start=0, *, join_lines=True):
     """Retain source locations for individual lines; joined paragraph views have line zero."""
     lines = [(line, number if start else 0) for number, line in enumerate(value.splitlines(), start)]
-    paragraphs = [(part, 0) for part in PARAGRAPH.split(value) if part.strip()]
-    return list(dict.fromkeys((normalized(part), line) for part, line in lines + paragraphs if part.strip()))
+    paragraphs = [(part, 0) for part in PARAGRAPH.split(value) if part.strip()] if join_lines else []
+    return list(dict.fromkeys((part, line) for part, line in lines + paragraphs if part.strip()))
 
 
 def redact(value, tokens):
     # Map the same separator-free casefold used by the verdict back to original character spans.
     folded, positions = [], []
     for index, letter in enumerate(value):
-        if not SPACES.fullmatch(letter):
+        if compact(letter):
             units = letter.casefold()
             folded.extend(units)
             positions.extend([index] * len(units))

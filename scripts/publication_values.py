@@ -7,21 +7,21 @@ import subprocess
 from xml.etree import ElementTree
 
 ENGINE = Path(__file__).with_name("publication-engine.mjs")
-MARKUP = {".md", ".html", ".htm", ".svg", ".css"}
+MARKUP = {".md", ".html", ".htm", ".svg", ".css", ".yaml", ".yml"}
 
 
-def documents(records, *, rendered=False):
+def documents(records, *, rendered=False, root=None):
     payload, locations, output = [], [], {}
     for path, source in records:
         suffix = path.suffix.lower()
-        item = {"suffix": suffix, "source": source}
+        item = {"suffix": suffix, "source": source, "path": str(path.resolve())}
         if suffix == ".svg":
             try:
-                root = ElementTree.fromstring(source)
+                xml_root = ElementTree.fromstring(source)
                 item["xml"] = {
-                    "text": "".join(root.itertext()),
-                    "attributes": [(name.rsplit("}", 1)[-1], value) for node in root.iter() for name, value in node.attrib.items()],
-                    "styles": ["".join(node.itertext()) for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "style"],
+                    "text": "".join(xml_root.itertext()),
+                    "attributes": [(name.rsplit("}", 1)[-1], value) for node in xml_root.iter() for name, value in node.attrib.items()],
+                    "styles": ["".join(node.itertext()) for node in xml_root.iter() if node.tag.rsplit("}", 1)[-1] == "style"],
                 }
             except ElementTree.ParseError:
                 output[path] = {"error": "publication-decode"}
@@ -30,7 +30,8 @@ def documents(records, *, rendered=False):
         locations.append(path)
     if payload:
         environment = {key: value for key, value in os.environ.items() if key != "IDENT_DENY_TOKENS"}
-        result = subprocess.run(["node", str(ENGINE)], input=json.dumps({"documents": payload, "rendered": rendered}), text=True,
+        result = subprocess.run(["node", str(ENGINE)], input=json.dumps({"documents": payload, "rendered": rendered,
+                                "root": str(root.resolve()) if root else None}), text=True,
                                 capture_output=True, timeout=60, env=environment)
         # Never forward child stderr, JSON errors or exception payloads into a diagnostic.
         if result.returncode:

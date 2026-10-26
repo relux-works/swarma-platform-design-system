@@ -41,10 +41,7 @@ jobs:
         env:
           IDENT_DENY_TOKENS: ${{ secrets.IDENT_DENY_TOKENS }}
         run: |
-          if [[ -z "${IDENT_DENY_TOKENS//[[:space:],]/}" ]]; then
-            echo "IDENT_DENY_TOKENS must contain a nonempty token list" >&2
-            exit 1
-          fi
+          python3 scripts/check_ci_tokens.py
           python3 scripts/check_hygiene.py
       - name: Markdown links
         run: python3 scripts/check_links.py

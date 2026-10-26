@@ -23,13 +23,14 @@ CI installs the browser version selected by the locked Playwright dependency.
 
 | Tool / command | Purpose | Output |
 | --- | --- | --- |
-| `npm ci` | Install the locked CommonMark, HTML, CSS and browser tooling | `node_modules/` |
+| `npm ci` | Install the locked CommonMark, HTML, YAML, CSS and browser tooling | `node_modules/` |
 | `npx playwright install chromium` | Install the Playwright Chromium binary | The configured browser cache |
 | `python3 scripts/check_contrast.py` | Measure computed token pairs and forced-color roles in Chromium | Console; exit 0 only when every target passes |
 | `python3 scripts/check_contrast.py --control` | Inject a known failing value in the browser fixture | Console; expected exit 1 with the intended light text-faint failure |
 | `python3 scripts/check_contrast.py assets/tokens.css --report references/contrast-report.md` | Recompute the four base-palette report after all browser appearances pass | Markdown report and console |
 | `python3 -m unittest discover -s scripts/tests -v` | Run clean and isolated negative controls | Console; temporary fixtures under `.temp/` are removed |
 | `python3 scripts/check_hygiene.py` | Check raw source, filenames and consumer-decoded publication values | Redacted rule diagnostics; nonzero on failure |
+| `python3 scripts/check_ci_tokens.py` | Require a usable explicit CI secret without local fallback | Redacted diagnostics; nonzero on invalid configuration |
 | `python3 scripts/check_links.py` | Resolve local links and anchors from rendered Markdown | Redacted diagnostics; no external requests |
 | GitHub Actions, `.github/workflows/ci.yml` | Run the same checks on pull requests and main pushes | Job logs; contrast-control log under `.temp/` |
 
@@ -70,8 +71,10 @@ Markdown uses pinned markdown-it CommonMark with tables and strikethrough enable
 HTML supplies attributes, links and anchors. Hygiene loads that HTML into Chromium for
 `innerText`, decoded text nodes and full accessibility-tree names, descriptions and values,
 including hidden `aria-labelledby` and `aria-describedby` references. Prose punctuation
-excludes code/pre elements in that same browser DOM. Scripts, service workers and network
-resources are blocked; inline styles still affect rendering. A missing browser or failed
+excludes code/pre elements in that same browser DOM. A synthetic origin preserves each document's
+location, base URLs, linked stylesheets, CSS imports and local images/fonts. Requests are fulfilled
+from files inside the publication root; missing or escaping local resources reject the scan.
+Scripts, service workers and remote resources are blocked. A missing browser or failed
 render rejects the scan. Link resolution only needs the CommonMark/HTML parser and does not
 launch Chromium.
 parse5 supplies the HTML tree; github-slugger assigns IDs to rendered Markdown headings, including
@@ -81,7 +84,7 @@ images and HTML links are resolved; local targets cannot escape the repository. 
 are not fetched. This establishes local resolution, not external reachability.
 
 The same Node publication engine is shared by hygiene and link checks. HTML text/attributes,
-XML-parsed SVG values, JSON keys/string values and CSS Tree's parsed strings/identifiers/URLs
+XML-parsed SVG values, JSON keys/string values, pinned YAML parser values and CSS Tree's parsed strings/identifiers/URLs
 receive the same generic and external rules as raw source. Adjacent CSS generated-content
 strings are joined. URL values receive percent decoding once; entity-looking CSS/JSON strings
 are not recursively HTML-decoded. The URL decoder is copied from the site's publication module
@@ -102,18 +105,24 @@ Generic rules cover Matrix IDs, board IDs, local paths, session URLs and workpla
 Repository links and email addresses require exact entries in `config/public-repos.json`.
 Real internal names come from `IDENT_DENY_TOKENS` (comma-separated literals), or the untracked file
 `$HOME/.config/swarma-site/deny-tokens.txt` (one literal per line; commas are also accepted).
-A nonempty environment list takes precedence over the file. Literal matching case-folds both sides,
-collapses Unicode whitespace (including line breaks and NBSP) and zero-width editing separators,
-and also compares their separator-free forms. Source and rendered paragraph boundaries remain
-separate; ordinary single line wraps do not. Generic patterns receive the normalized views too.
+A nonempty environment list takes precedence over the file locally. Literal matching case-folds both sides,
+removes Unicode format characters and collapses Unicode whitespace (including line breaks and NBSP),
+then also compares separator-free forms. Generic identifier patterns use the same normalizer,
+including separator-free and unwrapped forms. Source and rendered paragraph boundaries remain
+separate; ordinary single line wraps do not. Raw JSON/YAML records stay on their own lines;
+decoded JSON/YAML keys and string values are inspected separately, including folded YAML scalars.
+Malformed or unsupported YAML rejects `publication-decode`. Exact repository/email allowlists
+retain word boundaries while removing format characters and rejoining line wraps.
 Diagnostics redact both spaced and separator-free spellings, including split writes.
 The external list applies to filenames and all UTF-8 sources, including the policy and control files exempt
 from generic rules. Diagnostics report rule names and redact matching filenames, never token values.
 Keep real tokens out of source, fixtures, documentation, command arguments and logs.
 
 Configure the repository secret `IDENT_DENY_TOKENS` before CI; the workflow supplies it only to the repository hygiene step.
-That step rejects an empty or delimiter-only secret before running hygiene, without using a local-file fallback.
-CI requires a nonempty repository secret, regardless of `IDENT_DENY_TOKENS_OPTIONAL`.
+That step runs `python3 scripts/check_ci_tokens.py` before hygiene. The shared guard removes Unicode
+whitespace and format characters, then requires at least one token of three or more remaining characters.
+CI uses only usable tokens from the explicit secret and never reads the local fallback file,
+regardless of `IDENT_DENY_TOKENS_OPTIONAL`.
 Locally, missing tokens print a warning, run the generic checks and exit nonzero by default.
 For an explicit generic-only local run, use:
 

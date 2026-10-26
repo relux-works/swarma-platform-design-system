@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import MarkdownIt from 'markdown-it';
 import GithubSlugger from 'github-slugger';
 import { parse, serialize } from 'parse5';
+import { parseAllDocuments } from 'yaml';
 import { cssValues, decodePercent } from './css-publication.mjs';
 import { renderDocuments } from './rendered-publication.mjs';
 
@@ -25,6 +26,13 @@ function attribute(name, value) {
   return [value, ...(urls.has(name) ? [decodePercent(value)] : []), ...(name === 'style' ? cssValues(value, 'declarationList') : [])];
 }
 export function inspectDocument({ suffix, source, xml }) {
+  if (['.yaml', '.yml'].includes(suffix)) {
+    const values = parseAllDocuments(source, { prettyErrors: false }).flatMap(document => {
+      if (document.errors.length || document.warnings.length) throw new Error('invalid YAML');
+      return strings(document.toJS());
+    });
+    return { text: '', prose: source, values, links: [], ids: [] };
+  }
   if (suffix === '.css') return { text: '', prose: '', values: cssValues(source), links: [], ids: [] };
   if (xml) return {
     html: source,
@@ -60,7 +68,7 @@ try {
     try { return inspectDocument(document); }
     catch { return { error: 'publication-decode' }; }
   });
-  process.stdout.write(JSON.stringify(input.rendered ? await renderDocuments(output) : output));
+  process.stdout.write(JSON.stringify(input.rendered ? await renderDocuments(output, input.documents, input.root) : output));
 } catch {
   // The Python boundary also captures startup errors from missing Node dependencies.
   process.stdout.write(JSON.stringify({ error: 'publication-decode' }));

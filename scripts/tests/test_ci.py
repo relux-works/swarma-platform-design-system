@@ -148,10 +148,10 @@ class Controls(unittest.TestCase):
                 self.assertNotIn("zz-host-alpha", result.stdout.lower())
                 (self.root / path).unlink()
 
-    # File fallback is valid in CI, while an explicit nonempty environment list takes precedence.
+    # Local file fallback works; an explicit nonempty environment list takes precedence.
     def test_external_file_fallback(self):
         self.put("home/.config/swarma-site/deny-tokens.txt", "zz-host-alpha\nzz-host-beta\n")
-        env = {"HOME": str(self.root / "home"), "IDENT_DENY_TOKENS": "", "CI": "true"}
+        env = {"HOME": str(self.root / "home"), "IDENT_DENY_TOKENS": "", "CI": ""}
         # The source lives outside the scanned fixture, just as the real local file does.
         scan = self.root / "publication"
         scan.mkdir()
@@ -161,6 +161,111 @@ class Controls(unittest.TestCase):
         self.run_check("check_hygiene.py", env={**env, "IDENT_DENY_TOKENS": "zz-host-gamma"})
         self.put("sample.txt", "Ordinary text")
         self.run_check("check_hygiene.py", env=env)
+
+    # Every generic family rejects invisible and line-wrapped identifiers, with adjacent valid controls.
+    def test_generic_normalization(self):
+        cases = [("matrix-user", "@rea", "der:example.org"),
+                 ("matrix-event", "$" + "A" * 12, "A" * 12),
+                 ("matrix-room", "!" + "a" * 12, "a" * 12 + ":example.org"),
+                 ("board-id", "TASK-000", "000-aaaaaa"),
+                 ("internal-name", "example-de", "v1"),
+                 ("local-path", "/Us", "ers/example"),
+                 ("session-link", "https://chatgpt.com/co", "dex/example")]
+        for rule, prefix, suffix in cases:
+            for separator in ["\u200d", "\n"]:
+                with self.subTest(rule=rule, separator=repr(separator)):
+                    self.put("probe.txt", prefix + separator + "public")
+                    self.run_check("check_hygiene.py")
+                    self.put("probe.txt", prefix + separator + suffix)
+                    self.run_check("check_hygiene.py", rule)
+                    self.put("probe.txt", "Identifier " + prefix + separator + suffix + " in prose")
+                    self.run_check("check_hygiene.py", rule)
+        self.put("probe.txt", "@rea\n\nder:example.org")
+        self.run_check("check_hygiene.py")
+        for path, value in [("probe.json", '{"first":"@rea","second":"der:example.org"}'),
+                            ("probe.yaml", 'first: "@rea"\nsecond: "der:example.org"'),
+                            ("probe.yaml", 'uses: actions/checkout@v4\nname: Public step')]:
+            self.put(path, value)
+            self.run_check("check_hygiene.py")
+            (self.root / path).unlink()
+        self.put("config/public-repos.json", '{"repositories":["public-example"],"emails":["public@example.org"]}')
+        for value, rule in [("https://github.com/relux-works/pri\u200dvate-example", "private-repository"),
+                            ("https://git\nhub.com/relux-works/private-example", "private-repository"),
+                            ("rea\u200dder@example.org", "email"), ("reader@exam\nple.org", "email")]:
+            self.put("probe.txt", value)
+            self.run_check("check_hygiene.py", rule)
+        self.put("probe.txt", "https://github.com/relux-works/public-example.git public@example.org")
+        self.run_check("check_hygiene.py")
+        self.put("probe.txt", "https://git\nhub.com/relux-works/public-example.git public@exam\nple.org")
+        self.run_check("check_hygiene.py")
+
+    # A folded YAML scalar is one value; independent fields remain separate and malformed YAML rejects.
+    def test_yaml_value_boundaries(self):
+        self.put("probe.yaml", 'first: "@rea"\nsecond: "der:example.org"')
+        self.run_check("check_hygiene.py")
+        for value in ['label: "@rea\n  der:example.org"', 'label: >-\n  @rea\n  der:example.org',
+                      'label: "@rea\\u200dder:example.org"']:
+            self.put("probe.yaml", value.replace("der:example.org", "public"))
+            self.run_check("check_hygiene.py")
+            self.put("probe.yaml", value)
+            self.run_check("check_hygiene.py", "matrix-user")
+        self.put("probe.yaml", 'label: [')
+        self.run_check("check_hygiene.py", "publication-decode")
+        self.put("probe.yaml", 'label: Public text')
+        self.run_check("check_hygiene.py")
+
+    # The actual workflow guard rejects unusable Unicode secrets despite a valid ambient local policy.
+    def test_workflow_secret_guard(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        step = workflow.split("      - name: Repository hygiene\n", 1)[1].split("      - name:", 1)[0]
+        block = step.split("        run: |\n", 1)[1]
+        command = "\n".join(line[10:] for line in block.splitlines())
+        shutil.copytree(ROOT / "scripts", self.root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
+        self.put("home/.config/swarma-site/deny-tokens.txt", "zz-ambient-policy")
+        publication = self.root / "publication"
+        publication.mkdir()
+        environment = {**os.environ, "HOME": str(self.root / "home"), "CI": "true", "IDENT_DENY_TOKENS_OPTIONAL": "1"}
+        for token in ["", " , \n", "\u200d", "\u00a0", "\u00ad\u2060\ufeff", "a\u200db", "a\u00a0b", "at"]:
+            with self.subTest(token=repr(token)):
+                result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", command], cwd=self.root,
+                                        env={**environment, "IDENT_DENY_TOKENS":token}, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("identifier-deny-tokens", result.stdout + result.stderr)
+                self.assertNotIn("zz-ambient-policy", result.stdout + result.stderr)
+                if token == "at":
+                    self.assertNotIn(token, result.stdout + result.stderr)
+                self.run_check("check_hygiene.py", "identifier-deny-tokens", {**environment, "IDENT_DENY_TOKENS":token})
+        # Use a real scan, rather than a stub, for the workflow's valid secret control.
+        shutil.copytree(ROOT / "scripts", publication / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
+        valid = "q" + "xz"
+        for token in [valid, "q\u200dx\u00a0z", " , " + valid + "\n"]:
+            result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", command], cwd=publication,
+                                    env={**environment, "IDENT_DENY_TOKENS":token}, capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    # Linked and inline CSS yield the same AX verdict; imports/base/local assets load and missing dependencies reject.
+    def test_linked_stylesheet_accessibility(self):
+        environment = {"IDENT_DENY_TOKENS": "zz review omega"}
+        self.put("styles/entry.css", '@import "nested/generated.css";')
+        style = 'button::before {content:attr(data-prefix) " " attr(data-suffix)}'
+        self.put("styles/nested/generated.css", style)
+        body = ('<base href="../"><link rel="stylesheet" href="styles/entry.css" media="screen">'
+                '<button data-prefix="zz review" data-suffix="omega"></button>')
+        for suffix in ["html", "md"]:
+            for document in [body, body.replace('<link rel="stylesheet" href="styles/entry.css" media="screen">', '<style>' + style + '</style>')]:
+                self.put("pages/probe." + suffix, document.replace('data-suffix="omega"', 'data-suffix="public"'))
+                self.run_check("check_hygiene.py", env=environment)
+                self.put("pages/probe." + suffix, document)
+                self.run_check("check_hygiene.py", "deny-token", environment)
+            (self.root / ("pages/probe." + suffix)).unlink()
+        self.put("pages/probe.html", body.replace('data-suffix="omega"', 'data-suffix="public"'))
+        (self.root / "styles/nested/generated.css").unlink()
+        self.run_check("check_hygiene.py", "publication-decode", environment)
+        self.put("styles/nested/generated.css", "button {background-image:url(../../images/public.svg)}")
+        self.put("images/public.svg", '<svg xmlns="http://www.w3.org/2000/svg"/>')
+        self.run_check("check_hygiene.py", env=environment)
+        (self.root / "images/public.svg").unlink()
+        self.run_check("check_hygiene.py", "publication-decode", environment)
 
     # A missing or empty list fails in CI even if the local-only opt-out is set.
     def test_missing_tokens_in_ci(self):
@@ -504,7 +609,7 @@ try {
                           "import " + module + " as check; "
                           "sys.exit(check.run_cli(lambda: print('zz-host-alpha.txt') or 0, 'check-error'))")
                 result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True,
-                                        env={**os.environ, 'HOME':str(home), 'IDENT_DENY_TOKENS':''})
+                                        env={**os.environ, 'HOME':str(home), 'IDENT_DENY_TOKENS':'', 'CI':''})
                 self.assertEqual(result.returncode, 1)
                 self.assertIn('identifier-deny-tokens', result.stdout + result.stderr)
                 self.assertNotIn('zz-host-alpha', result.stdout + result.stderr)
