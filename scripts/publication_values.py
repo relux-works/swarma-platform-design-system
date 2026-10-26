@@ -10,7 +10,7 @@ ENGINE = Path(__file__).with_name("publication-engine.mjs")
 MARKUP = {".md", ".html", ".htm", ".svg", ".css"}
 
 
-def documents(records):
+def documents(records, *, rendered=False):
     payload, locations, output = [], [], {}
     for path, source in records:
         suffix = path.suffix.lower()
@@ -30,7 +30,7 @@ def documents(records):
         locations.append(path)
     if payload:
         environment = {key: value for key, value in os.environ.items() if key != "IDENT_DENY_TOKENS"}
-        result = subprocess.run(["node", str(ENGINE)], input=json.dumps(payload), text=True,
+        result = subprocess.run(["node", str(ENGINE)], input=json.dumps({"documents": payload, "rendered": rendered}), text=True,
                                 capture_output=True, timeout=60, env=environment)
         # Never forward child stderr, JSON errors or exception payloads into a diagnostic.
         if result.returncode:

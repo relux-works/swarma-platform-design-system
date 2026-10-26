@@ -51,8 +51,11 @@ not every operating-system high-contrast palette. The report retains the four ba
 in the fixture DOM; it never writes the stylesheet. CI requires exit exactly 1 and the intended
 failing pair, so an unrelated crash cannot satisfy the control.
 
-Hygiene scans repository files, including hidden publication directories. Git metadata,
-`node_modules/`, `.temp/` and Python bytecode caches are omitted. Binary artwork formats may
+Hygiene scans repository files, including hidden publication directories. The explicit tooling exclusion list is
+`.git`, `.hg`, `.svn`, `node_modules`, `.temp` and `__pycache__`, as exact basenames in
+either file or directory form at every depth. Git worktree pointer files are therefore
+excluded too. Other hidden paths, including `.github/`, remain scanned; publication symlinks
+and read failures outside these exclusions still reject. Binary artwork formats may
 contain non-text bytes. Other source files must be UTF-8 without a BOM or NUL bytes; violations fail
 `publication-encoding`. Malformed JSON, SVG and CSS parse errors fail `publication-decode`.
 CSS follows the pinned parser's CSS error recovery, including EOF termination of strings/comments.
@@ -64,7 +67,13 @@ retain both raw code examples and rendered text. Other formats have no Markdown 
 Word hyphens, numeric ranges and Markdown list markers remain valid.
 
 Markdown uses pinned markdown-it CommonMark with tables and strikethrough enabled. Its rendered
-HTML, rather than a handwritten prose filter, supplies text, attributes, links and anchors.
+HTML supplies attributes, links and anchors. Hygiene loads that HTML into Chromium for
+`innerText`, decoded text nodes and full accessibility-tree names, descriptions and values,
+including hidden `aria-labelledby` and `aria-describedby` references. Prose punctuation
+excludes code/pre elements in that same browser DOM. Scripts, service workers and network
+resources are blocked; inline styles still affect rendering. A missing browser or failed
+render rejects the scan. Link resolution only needs the CommonMark/HTML parser and does not
+launch Chromium.
 parse5 supplies the HTML tree; github-slugger assigns IDs to rendered Markdown headings, including
 inline-code text. Fenced, inline, indented and nested code examples create no live HTML IDs or
 links. Undefined reference syntax remains literal text, as in CommonMark. Real reference links,
@@ -93,7 +102,11 @@ Generic rules cover Matrix IDs, board IDs, local paths, session URLs and workpla
 Repository links and email addresses require exact entries in `config/public-repos.json`.
 Real internal names come from `IDENT_DENY_TOKENS` (comma-separated literals), or the untracked file
 `$HOME/.config/swarma-site/deny-tokens.txt` (one literal per line; commas are also accepted).
-A nonempty environment list takes precedence over the file. Matches are case-insensitive literal substrings.
+A nonempty environment list takes precedence over the file. Literal matching case-folds both sides,
+collapses Unicode whitespace (including line breaks and NBSP) and zero-width editing separators,
+and also compares their separator-free forms. Source and rendered paragraph boundaries remain
+separate; ordinary single line wraps do not. Generic patterns receive the normalized views too.
+Diagnostics redact both spaced and separator-free spellings, including split writes.
 The external list applies to filenames and all UTF-8 sources, including the policy and control files exempt
 from generic rules. Diagnostics report rule names and redact matching filenames, never token values.
 Keep real tokens out of source, fixtures, documentation, command arguments and logs.

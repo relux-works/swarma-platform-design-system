@@ -7,16 +7,13 @@ import MarkdownIt from 'markdown-it';
 import GithubSlugger from 'github-slugger';
 import { parse, serialize } from 'parse5';
 import { cssValues, decodePercent } from './css-publication.mjs';
+import { renderDocuments } from './rendered-publication.mjs';
 
 const markdown = new MarkdownIt('commonmark', { html: true }).enable(['table', 'strikethrough']);
-const block = new Set(['p', 'div', 'section', 'article', 'header', 'footer', 'li', 'ul', 'ol', 'blockquote', 'pre', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr', 'td', 'th']);
 const urls = new Set(['href', 'src', 'srcset', 'action', 'poster']);
 function nodes(node) { return [node, ...(node.childNodes ?? []).flatMap(nodes)]; }
-function text(node, prose = false, boundaries = true) {
-  if (['style', 'script'].includes(node.tagName) || (prose && ['code', 'pre'].includes(node.tagName))) return '';
-  if (node.nodeName === '#text') return node.value;
-  const value = (node.childNodes ?? []).map(child => text(child, prose, boundaries)).join('');
-  return boundaries && block.has(node.tagName) ? `\n${value}\n` : value;
+function headingText(node) {
+  return node.nodeName === '#text' ? node.value : (node.childNodes ?? []).map(headingText).join('');
 }
 function strings(value) {
   if (typeof value === 'string') return [value];
@@ -30,6 +27,7 @@ function attribute(name, value) {
 export function inspectDocument({ suffix, source, xml }) {
   if (suffix === '.css') return { text: '', prose: '', values: cssValues(source), links: [], ids: [] };
   if (xml) return {
+    html: source,
     text: xml.text, prose: xml.text,
     values: [...xml.attributes.flatMap(([name, value]) => attribute(name, value)), ...xml.styles.flatMap(style => cssValues(style))], links: [], ids: []
   };
@@ -38,7 +36,7 @@ export function inspectDocument({ suffix, source, xml }) {
   if (suffix === '.md') for (const node of all) {
     if (!/^h[1-6]$/u.test(node.tagName ?? '')) continue;
     // Assign IDs to the rendered headings. Code text and formatting follow the renderer's DOM.
-    if (!node.attrs.some(attr => attr.name === 'id')) node.attrs.push({ name: 'id', value: slugger.slug(text(node, false, false)) });
+    if (!node.attrs.some(attr => attr.name === 'id')) node.attrs.push({ name: 'id', value: slugger.slug(headingText(node)) });
   }
   const values = [], links = [], ids = [];
   for (const node of all) {
@@ -52,17 +50,17 @@ export function inspectDocument({ suffix, source, xml }) {
       if (name === 'id' || (node.tagName === 'a' && name === 'name')) ids.push(value);
     }
   }
-  return { text: text(dom), prose: text(dom, true), values, links, ids, html: serialize(dom) };
+  return { text: '', prose: '', values, links, ids, html: serialize(dom) };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 try {
   const input = JSON.parse(readFileSync(0, 'utf8'));
-  const output = input.map(document => {
+  const output = input.documents.map(document => {
     try { return inspectDocument(document); }
     catch { return { error: 'publication-decode' }; }
   });
-  process.stdout.write(JSON.stringify(output));
+  process.stdout.write(JSON.stringify(input.rendered ? await renderDocuments(output) : output));
 } catch {
   // The Python boundary also captures startup errors from missing Node dependencies.
   process.stdout.write(JSON.stringify({ error: 'publication-decode' }));

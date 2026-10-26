@@ -6,12 +6,13 @@ import os
 from pathlib import Path
 import re
 import sys
+from publication_policy import compact, redact
 
 _loaded = []
 
 
 def split(text):
-    return [token.strip() for token in re.split(r"[,\r\n]+", text) if token.strip()]
+    return [token.strip() for token in re.split(r"[,\r\n]+", text) if compact(token)]
 
 
 def deny_tokens():
@@ -26,9 +27,7 @@ def deny_tokens():
 
 
 def redacted(text):
-    for token in set(_loaded + split(os.environ.get("IDENT_DENY_TOKENS", ""))):
-        text = re.sub(re.escape(token), "[redacted]", text, flags=re.IGNORECASE)
-    return text
+    return redact(text, _loaded + split(os.environ.get("IDENT_DENY_TOKENS", "")))
 
 
 def unexpected(_kind, _error, _traceback):

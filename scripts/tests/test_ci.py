@@ -37,6 +37,99 @@ class Controls(unittest.TestCase):
             print(f"control {script}: {rule}: exit {result.returncode}")
         return result
 
+    # Ordinary reflow and invisible separators cannot conceal a literal; paragraph and code boundaries stay separate.
+    def test_rendered_whitespace_policy(self):
+        environment = {"IDENT_DENY_TOKENS": "zz reviewer omega"}
+        for value in ["zz reviewer\nomega", "zz reviewer  omega", "zz reviewer\u00a0omega",
+                      "zz review\u200der omega", "zz reviewer  \nomega", "zz **reviewer**\nomega",
+                      "zzrevieweromega"]:
+            with self.subTest(value=value):
+                self.put("probe.md", value.replace("omega", "public"))
+                self.run_check("check_hygiene.py", env=environment)
+                self.put("probe.md", value)
+                result = self.run_check("check_hygiene.py", "deny-token", environment)
+                self.assertNotIn("zz reviewer omega", (result.stdout + result.stderr).lower())
+        for value in ["zz reviewer\n\nomega", "zz reviewer\n\n```text\nomega\n```",
+                      "<p>zz reviewer</p><p>omega</p>"]:
+            self.put("probe.md", value)
+            self.run_check("check_hygiene.py", env=environment)
+        for path, value in [("probe.txt", "zz reviewer\nomega"),
+                            ("probe.json", '{"label":"zz reviewer  omega"}'),
+                            ("probe.css", 'p {content:"zz reviewer  omega"}')]:
+            self.put("probe.md", "Public text")
+            self.put(path, value)
+            self.run_check("check_hygiene.py", "deny-token", environment)
+            (self.root / path).unlink()
+
+    # Hidden ARIA references are resolved by Chromium, including descriptions, roles absent from snapshots, and SVG.
+    def test_full_accessibility_values(self):
+        environment = {"IDENT_DENY_TOKENS": "zz reviewer omega"}
+        for suffix in ["md", "html", "svg"]:
+            for attribute in ["aria-labelledby", "aria-describedby"]:
+                with self.subTest(suffix=suffix, attribute=attribute):
+                    body = ('<span id="a" hidden>zz reviewer</span><span id="b" hidden>omega</span>'
+                            '<button ' + attribute + '="a b">Public button</button>')
+                    if suffix == "svg":
+                        body = ('<svg xmlns="http://www.w3.org/2000/svg"><text id="a" display="none">zz reviewer</text>'
+                                '<text id="b" display="none">omega</text><g role="button" tabindex="0" '
+                                + attribute + '="a b"><text>Public button</text></g></svg>')
+                    self.put("probe." + suffix, body.replace("omega", "public"))
+                    self.run_check("check_hygiene.py", env=environment)
+                    self.put("probe." + suffix, body)
+                    self.run_check("check_hygiene.py", "deny-token", environment)
+                    (self.root / ("probe." + suffix)).unlink()
+        self.put("probe.html", '<span hidden id="a">Русский</span><span hidden id="b">— текст</span><button aria-labelledby="a b">Public</button>')
+        self.run_check("check_hygiene.py", "russian-dash")
+        self.put("probe.html", '<span hidden id="a">Русский</span><span hidden id="b">текст</span><button aria-labelledby="a b">Public</button>')
+        self.run_check("check_hygiene.py")
+        missing = self.run_check("check_hygiene.py", "identifier-scan", {
+            "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH": str(self.root / "zz-host-alpha-missing-browser")})
+        self.assertNotIn("zz-host-alpha", missing.stdout + missing.stderr)
+        self.assertNotIn("Traceback", missing.stdout + missing.stderr)
+
+    # Git pointers and documented tooling are excluded in either form, while neighboring publications still reject.
+    def test_git_metadata_forms(self):
+        self.put("public.md", "Public text")
+        pointer = "gitdir: /home/example/repository/.git/worktrees/sample-rev1"
+        for script in ["check_hygiene.py", "check_links.py"]:
+            self.put(".git", pointer)
+            self.run_check(script)
+            (self.root / ".git").unlink()
+            self.put(".git/config", pointer)
+            self.run_check(script)
+            shutil.rmtree(self.root / ".git")
+        self.put("published.txt", pointer)
+        self.run_check("check_hygiene.py", "local-path")
+        (self.root / "published.txt").unlink()
+        for name in [".hg", ".svn", ".temp", "node_modules", "__pycache__"]:
+            self.put(name + "/metadata", pointer)
+        self.run_check("check_hygiene.py")
+        self.put(".github/published.md", pointer)
+        self.run_check("check_hygiene.py", "local-path")
+
+    # Normalized denied basenames and split diagnostic writes redact without disclosing compact or spaced forms.
+    def test_normalized_diagnostic_redaction(self):
+        token = "zz reviewer omega"
+        name = "zz\u200breviewer\u200domega.txt"
+        self.put(name, "Public text")
+        result = self.run_check("check_hygiene.py", "deny-token", {"IDENT_DENY_TOKENS":token})
+        self.assertIn("[redacted]", result.stdout + result.stderr)
+        self.assertNotIn(name, result.stdout + result.stderr)
+        source = ("import sys; sys.path.insert(0, " + repr(str(ROOT / 'scripts')) + "); "
+                  "from diagnostics import run_cli; "
+                  "sys.exit(run_cli(lambda: print('zz reviewer\\n\\tomega') or 0, 'check-error'))")
+        result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True,
+                                env={**os.environ, 'IDENT_DENY_TOKENS':token})
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.strip(), "[redacted]")
+        source = ("import sys; sys.path.insert(0, " + repr(str(ROOT / 'scripts')) + "); "
+                  "from diagnostics import run_cli; "
+                  "sys.exit(run_cli(lambda: print('ZZ STRASSE') or 0, 'check-error'))")
+        result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True,
+                                env={**os.environ, 'IDENT_DENY_TOKENS':'zz straße'})
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.strip(), "[redacted]")
+
     # A synthetic literal fails only when configured, including case variants and punctuation.
     def test_external_tokens(self):
         self.put("sample.txt", "ZZ-HOST-ALPHA and zz.host+alpha")
@@ -75,6 +168,9 @@ class Controls(unittest.TestCase):
             with self.subTest(optional=optional):
                 self.run_check("check_hygiene.py", "identifier-deny-tokens",
                                {"IDENT_DENY_TOKENS": " , ", "CI": "true", "IDENT_DENY_TOKENS_OPTIONAL": optional})
+
+        self.run_check("check_hygiene.py", "identifier-deny-tokens",
+                       {"IDENT_DENY_TOKENS": "\u200b", "CI": "true"})
 
     # Local absence warns and fails unless explicitly optional; generic checks remain active.
     def test_optional_local_tokens(self):
@@ -540,6 +636,12 @@ try {
         invoke("check_hygiene.py", "deny-token")
         (publication / "references/encoded.md").write_text('zz-integration-**alpha**')
         invoke("check_hygiene.py", "deny-token")
+        prefix, ending = "zz" + "-integration-", "al" + "pha"
+        for value in [prefix + "\n" + ending, prefix + "  " + ending, prefix + "\u200d" + ending,
+                      '<span hidden id="a">' + prefix + '</span><span hidden id="b">' + ending
+                      + '</span><button aria-labelledby="a b">Public</button>']:
+            (publication / "references/encoded.md").write_text(value)
+            invoke("check_hygiene.py", "deny-token")
         (publication / "references/encoded.md").write_text('[Ghost](target.md#ghost)')
         (publication / "references/target.md").write_text('```html\n<div id="ghost"></div>\n```')
         invoke("check_links.py", "markdown-anchor")

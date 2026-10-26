@@ -10,6 +10,7 @@ from pathlib import Path
 from check_common import ROOT, files
 from hygiene_rules import EMAIL, IDENTIFIERS, INVOCATION_FILES, PUBLIC_INVOCATION, REPOSITORY, RUSSIAN, RUSSIAN_RULES
 from publication_values import MARKUP, documents, strings
+from publication_policy import compact, match_views, normalized, redact, token_match
 
 # Only generic policy definitions and the isolated controls have generic-rule exemptions.
 EXEMPT = {"scripts/hygiene_rules.py", "scripts/tests/test_ci.py"}
@@ -37,18 +38,16 @@ def check(root):
         return ["configuration:0: identifier-allowlist"]
 
     def redacted(value):
-        for token in tokens:
-            value = re.sub(re.escape(token), "[redacted]", value, flags=re.IGNORECASE)
-        return value
+        return redact(value, tokens)
 
     records = []
     for path in files(root):
         relative = path.relative_to(root).as_posix()
-        if any(token.lower() in relative.lower() for token in tokens):
+        if token_match(relative, tokens):
             errors.append(f"{relative}:0: deny-token")
         if relative not in EXEMPT:
             for rule, pattern in IDENTIFIERS.items():
-                if pattern.search(relative):
+                if any(pattern.search(candidate) for candidate in [normalized(relative), compact(relative)]):
                     errors.append(f"{relative}:0: {rule}")
         try:
             text = path.read_text(encoding="utf-8")
@@ -61,7 +60,7 @@ def check(root):
                 errors.append(f"{relative}:0: publication-encoding")
         except OSError:
             errors.append(f"{relative}:0: identifier-scan: cannot read publication")
-    rendered = documents([(path, text) for path, text in records if path.suffix.lower() in MARKUP])
+    rendered = documents([(path, text) for path, text in records if path.suffix.lower() in MARKUP], rendered=True)
     for path, text in records:
         relative = path.relative_to(root).as_posix()
         label = redacted(relative)
@@ -73,6 +72,7 @@ def check(root):
             else:
                 views.append((info["text"], info["prose"], 0))
                 views.extend((value, value, 0) for value in info["values"])
+                views.extend((value, value if prose else "", 0) for value, prose in info.get("decoded", []) + info.get("accessible", []))
         elif path.suffix.lower() == ".json":
             try:
                 views.extend((value, value, 0) for value in strings(json.loads(text)))
@@ -81,8 +81,8 @@ def check(root):
         russian = any(RUSSIAN.search(body) for _, body, _ in views)
         for value, body, start in views:
             # External literals are forbidden even in the exempt policy and control sources.
-            for number, line in enumerate(value.splitlines(), start):
-                if any(token.lower() in line.lower() for token in tokens):
+            for line, number in match_views(value, start):
+                if token_match(line, tokens):
                     errors.append(f"{label}:{number if start else 0}: deny-token")
                 if relative in EXEMPT:
                     continue
@@ -90,15 +90,15 @@ def check(root):
                     candidate = PUBLIC_INVOCATION.sub("", line) if rule == "matrix-event" and relative in INVOCATION_FILES else line
                     if pattern.search(candidate):
                         errors.append(f"{label}:{number if start else 0}: {rule}")
-                for match in REPOSITORY.finditer(line):
+                for match in REPOSITORY.finditer(normalized(line)):
                     repository = re.sub(r"\.git$", "", match[1], flags=re.IGNORECASE)
                     if repository not in allowlist["repositories"]:
                         errors.append(f"{label}:{number if start else 0}: private-repository")
-                for match in EMAIL.finditer(line):
+                for match in EMAIL.finditer(normalized(line)):
                     if match[0] not in allowlist["emails"]:
                         errors.append(f"{label}:{number if start else 0}: email")
             if russian and relative not in EXEMPT:
-                for number, line in enumerate(body.splitlines(), start):
+                for line, number in match_views(body, start):
                     for rule, pattern in RUSSIAN_RULES.items():
                         if pattern.search(line):
                             errors.append(f"{label}:{number if start and info is None else 0}: {rule}")
