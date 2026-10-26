@@ -1,5 +1,10 @@
 # Motion and Interaction
 
+Inherited from the Relux Works product web design system. Swarma changes are marked. The
+book's diagrams carry no volume, shadow or decoration (`diagram-style:9`; notation as in
+[swarma-identity.md](swarma-identity.md)), and Swarma motion follows the same restraint: it shows a
+state change and stops.
+
 ## Motion tokens
 
 Use a small timing vocabulary:
@@ -71,12 +76,13 @@ A navigation menu is complete only when it supports:
 Use native disclosure semantics for a non-modal compact menu. Use a dialog pattern for
 a modal drawer; do not mix their keyboard contracts.
 
-## Brand artwork
+## Identity artwork
 
-- Keep the Relux symbol and wordmark static.
+- Keep the Swarma wordmark, the Swarma mark once supplied, and the Relux Works operator artwork
+  static.
 - Do not rotate, skew, morph, pulse, glow, draw on, or separate their elements.
-- Do not repurpose the chevron or northeast arrow as loading, progress, redirect, or
-  synchronization animation.
+- Do not repurpose the operator's chevron or northeast arrow, or any part of the future Swarma
+  mark, as loading, progress, redirect, or synchronization animation.
 - Apply linked-logo hover and focus feedback to its container or focus indicator; do
   not alter the artwork's geometry, spacing, or relative colors.
 
@@ -101,9 +107,17 @@ Motion may carry product meaning:
 - Spatial topology, drag placement, or a live data transition.
 - Completion, warning, error, or a confirmed state change.
 
-Continuous animation is not a default decoration. A Pulsar icon may pulse while
-listening or synchronizing; it should remain still when idle. Status must also be
-available in text and not depend on motion alone.
+Continuous animation is not a default decoration. An indicator may move while a real
+operation runs and must stop when it ends. Status must also be available in text and not
+depend on motion alone.
+
+**Swarma additions:**
+
+- Book figures, trust boundaries, role markers, status badges and the layer order never animate.
+  They describe structure, and structure does not move.
+- No particles, flowing connection lines, pulsing nodes or "swarm" movement anywhere. The book has
+  no such imagery (see [swarma-identity.md](swarma-identity.md), "Rejected candidates").
+- No scroll-triggered entrance animations for sections.
 
 ## Performance
 

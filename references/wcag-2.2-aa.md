@@ -14,7 +14,7 @@
 
 ## Conformance contract
 
-WCAG 2.2 Level AA is the minimum release target for every Relux Works product website
+WCAG 2.2 Level AA is the minimum release target for every Swarma surface: product website
 and web application. It includes all Level A and Level AA success criteria.
 
 Apply the target to:

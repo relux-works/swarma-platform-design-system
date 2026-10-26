@@ -1,5 +1,7 @@
 # Discovery and Trust
 
+Inherited from the Relux Works product web design system, with Swarma rules added in "Swarma facts".
+
 ## One public fact model
 
 Treat every public surface as a view of one maintained fact model:
@@ -15,6 +17,21 @@ Treat every public surface as a view of one maintained fact model:
 The same product must not be active on one surface, experimental on another, and
 discontinued in a third. Keep ownership, availability, price, currency, language,
 version, and support claims synchronized from structured source data where practical.
+
+## Swarma facts
+
+- **One source per fact.** Statements about the platform come from the Swarma book or its papers
+  and name the chapter, section or paper they come from.
+- **Design and state stay apart.** The book describes the platform by its design, in the present
+  tense, and keeps the state of every part in its status chapter (book `book/ru/00-dlya-kogo.md`,
+  "Дизайн и готовность"). A Swarma surface presents design as design and shows the state of a part
+  only where that chapter states it, in its words, never higher.
+- **Exact versions.** Every page that relies on the book or a paper names the version and date.
+  Status data names the book version it was taken from.
+- **Machine-facing agreement.** `llms.txt`, structured data and any agent-facing catalog carry the
+  same facts as the visible pages, including the same status words, and no more.
+- **No internal material.** No internal identifiers, session, machine or agent names, local paths
+  or private repository links on any public surface.
 
 ## Product identity
 

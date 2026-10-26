@@ -3,12 +3,14 @@
   "runtime_roots": [],
   "commands": {},
   "capabilities": {
-    "network": ["www.w3.org"],
+    "network": [
+      "www.w3.org"
+    ],
     "filesystem": "repo",
     "exec": "none",
     "secrets": "none",
     "env_read": [],
-    "prompt_scope": "Design, implement, migrate, and review Relux Works product websites using the approved corporate identity and shared product-family system."
+    "prompt_scope": "Design, implement, migrate, and review Swarma platform web surfaces with the Swarma Platform Design System, a fork of the Relux Works product web design system with an identity taken from the Swarma book."
   },
   "dependencies": {
     "commands": {},

@@ -3,38 +3,131 @@
 ## Contents
 
 1. [Semantic model](#semantic-model)
-2. [Relux Works identity](#relux-works-identity)
-3. [Product palette workflow](#product-palette-workflow)
-4. [Theme requirements](#theme-requirements)
-5. [Contrast targets](#contrast-targets)
-6. [Dark mode](#dark-mode)
-7. [Materials and gradients](#materials-and-gradients)
-8. [Implementation rules](#implementation-rules)
+2. [Swarma palette](#swarma-palette)
+3. [Role layer](#role-layer)
+4. [Status layer](#status-layer)
+5. [Operator identity colors](#operator-identity-colors)
+6. [Theme requirements](#theme-requirements)
+7. [Contrast targets and evidence](#contrast-targets-and-evidence)
+8. [Dark mode](#dark-mode)
+9. [Materials and gradients](#materials-and-gradients)
+10. [Implementation rules](#implementation-rules)
+
+Source notation (`diagram-style:17`, `theme:78`, `book.lua:12`) is defined in
+[swarma-identity.md](swarma-identity.md).
 
 ## Semantic model
 
-Components consume semantic roles rather than palette names. The baseline contract
-in `assets/tokens.css` includes:
+Components consume semantic roles, never palette names. The token contract in `assets/tokens.css`
+keeps every role of the Relux Works system and adds two Swarma layers:
 
 - Canvas and surfaces: `--color-bg`, `--color-surface`, `--color-surface-raised`,
-  `--color-surface-subtle`.
-- Text: `--color-text`, `--color-text-muted`, `--color-text-faint`.
+  `--color-surface-subtle`, `--color-surface-hover`.
+- Text: `--color-text`, `--color-text-muted`, `--color-text-faint`, `--color-text-inverse`.
 - Structure: `--color-border`, `--color-border-strong`, `--color-divider`.
-- Controls: `--color-control`, `--color-control-hover`, `--color-control-pressed`,
-  `--color-control-text`, `--color-focus`.
-- Fixed identity: `--color-brand-red`, `--color-brand-ink`, and
-  `--color-brand-white`.
-- Product actions and navigation: `--color-accent`, accent state variants,
-  `--color-link`, and `--color-link-hover`.
-- Feedback: success, warning, error, and information roles.
-- Overlays: scrim, selection, material, and shadow roles.
+- Controls: `--color-control*`, `--color-strong-action*`, `--color-focus`.
+- Accent and links: `--color-accent*`, `--color-on-accent`, `--color-link`, `--color-link-hover`.
+- Feedback: `--color-success`, `--color-warning`, `--color-error`, `--color-info`.
+- Overlays: selection, scrim, material and shadow.
+- **Swarma role layer:** `--color-role-<role>-stroke`, `-fill` and `-text` for the eight diagram
+  roles (human, agent, service, store, key, external, alert, neutral).
+- **Swarma status layer:** `--color-status-<status>-bg` and `-text` for the book's five status
+  words.
+- **Figures:** `--color-figure-ground` (fixed white) and `--color-figure-frame`.
+- Fixed operator identity: `--color-brand-red`, `--color-brand-ink`, `--color-brand-white`.
 
-The semantic role must remain stable when its underlying color changes. A red product
-accent does not turn every validation error into a brand action.
+A semantic role keeps its meaning when its value changes. The role and status layers never replace
+feedback roles: an `alert` element in a mechanism is not a form error, and a status badge is not a
+success message.
 
-## Relux Works identity
+## Swarma palette
 
-Keep the production identity separate from product expression:
+The palette comes from the book (see [swarma-identity.md](swarma-identity.md), "Colour"): one deep
+blue accent and cool blue-grey neutrals. Light values are the book's own where they meet the
+contrast targets; dark and more-contrast values are derived from the same hues.
+
+| Role | Light | Dark | Light, more contrast | Dark, more contrast | Light source |
+| --- | --- | --- | --- | --- | --- |
+| `--color-bg` | `#f5f7fa` | `#0f1318` | `#f5f7fa` | `#0b0e12` | book quotation ground |
+| `--color-surface-subtle` | `#eef1f5` | `#151a20` | `#ebeef3` | `#12161b` | book table header |
+| `--color-surface` | `#fafbfc` | `#1a2027` | `#fafbfc` | `#171c22` | derived, not pure white |
+| `--color-text` | `#1d2126` | `#e5e8ec` | `#0f1216` | `#f2f4f6` | book ink |
+| `--color-text-muted` | `#374151` | `#bcc3cc` | `#2a3038` | `#d3d8de` | book secondary text |
+| `--color-text-faint` | `#5f6670` | `#9aa3ae` | `#3c434d` | `#bcc3cc` | diagram label grey |
+| `--color-border` | `#d5d9df` | `#313943` | `#6f7884` | `#66707c` | book rule |
+| `--color-accent` | `#23466e` | `#8db4e6` | `#1c3a5e` | `#b3cdf0` | book accent |
+| `--color-link` | `#23466e` | `#a7c5ee` | `#1c3a5e` | `#c0d6f3` | book links |
+| `--color-focus` | `#23466e` | `#a7c5ee` | `#1c3a5e` | `#c0d6f3` | book accent |
+| `--color-error` | `#b0204f` | `#f59ab7` | `#8a1840` | `#f8b5ca` | diagram `alert` label |
+
+`--color-success`, `--color-warning` and `--color-info` keep the inherited Relux values: they are
+functional, and the book has no feedback colours of its own. The full set, including hover,
+pressed, soft, control and overlay values, is in `assets/tokens.css`.
+
+Two recorded consequences:
+
+- Links have less than 3:1 against body text in every appearance, so links in prose are always
+  underlined; colour is an extra cue.
+- The accent and `--color-info` are both blues and close in luminance (see the "info" lines in
+  [contrast-report.md](contrast-report.md)). `--color-info` always carries a text label, so the two
+  are never told apart by colour alone.
+
+## Role layer
+
+The eight roles carry the meanings the book's diagrams give them (`diagram-style:17-28`):
+
+| Role | Meaning in the book | Light stroke | Light fill | Light text |
+| --- | --- | --- | --- | --- |
+| `human` | a person: operator, owner, donor | `#747c87` | `#f1f2f4` | `#5f6670` |
+| `agent` | an agent or its key | `#7c4ddb` | `#f3effd` | `#6a3fc8` |
+| `service` | a platform program | `#2f6fdb` | `#ebf2ff` | `#2a62c4` |
+| `store` | a store, registry or journal | `#11826d` | `#e7f5f1` | `#0e6f5d` |
+| `key` | a key, root of trust or key-holding program | `#a8740a` | `#fff8e1` | `#8f6208` |
+| `external` | a system outside the owner's control | `#d0650e` | `#fff2e6` | `#a04c09` |
+| `alert` | refusal, revocation, alarm, physical action on a device | `#c8285f` | `#fdeef3` | `#b0204f` |
+| `neutral` | an auxiliary element without a role | `#747c87` | `#f6f7f9` | `#5f6670` |
+
+Light values equal the diagram theme except four, changed for interface contrast: the human and
+neutral strokes (`#8b929c` in the diagrams, below 3:1 against their fills), the external stroke
+(`#d9690f` in the diagrams, 2.96:1 on the hover surface) and the external text (`#b9580b` in the
+diagrams, 4.28:1 on its fill). Dark and more-contrast values are new. The contrast check measures
+every role text and stroke against its fill and against every page surface, hover surfaces
+included, so a role marker may appear on any surface of the system.
+
+Rules:
+
+- Use a role colour only on an element that has that role in the mechanism the page describes: a
+  labelled box, a legend swatch, a marker beside a named component.
+- Name the element in text; the colour repeats the role and never replaces it.
+- Do not use role colours for actions, links, focus, navigation, feedback or decoration.
+- `-text` is for the element's label, `-stroke` for its 2 px frame, `-fill` for its ground.
+- Inside a book figure the figure's own colours apply; the role tokens are for interface elements
+  next to it.
+
+## Status layer
+
+The book renders its five status words as coloured badges that always contain the word
+(`book.lua:11-17`, `book/style.css:266-270`):
+
+| Token | Status word | Light ground | Light text |
+| --- | --- | --- | --- |
+| `--color-status-now-*` | работает сегодня | `#dcefdd` | `#1f5a2b` |
+| `--color-status-decided-*` | решено | `#dfe8f5` | `#1e3f6b` |
+| `--color-status-proposed-*` | предложено | `#fbead0` | `#7a4a04` |
+| `--color-status-spec-*` | спецификация | `#ebe3f5` | `#4b2a75` |
+| `--color-status-open-*` | открыто | `#f5dddd` | `#7c1f1f` |
+
+Rules:
+
+- A status badge always shows the status word itself. Colour repeats the word and is never the only
+  signal.
+- Only these five words get a status colour, and only when a cell is exactly one of them. Any other
+  status text renders in neutral text without a badge colour.
+- A status appears only where its source states it; the badge never raises or summarises a status.
+- A product may choose to render status without colour (for example, when its design contract says
+  so). The tokens exist so that, where colour is used, it matches the book.
+
+## Operator identity colors
 
 ```css
 --color-brand-red: #F60D10;
@@ -42,134 +135,77 @@ Keep the production identity separate from product expression:
 --color-brand-white: #FFFFFF;
 ```
 
-These three values belong to the supplied Relux Works artwork and do not change per
-product. Brand white is an intentional knockout color, not a general interface
-surface. Product themes consume the semantic action, link, focus, and state tokens;
-they may replace those tokens only as a complete tested set and must never recolor the
-Relux Works mark.
-
-The baseline Relux semantic red ramp is:
-
-| Appearance | Accent | Hover / pressed | Link | Link hover | Focus |
-| --- | --- | --- | --- | --- | --- |
-| Light | `#C20A0C` | `#A80608` | `#A80608` | `#810406` | `#C20A0C` |
-| Dark | `#FF6961` | `#FF817B` | `#FF817B` | `#FF9A94` | `#FF817B` |
-| Light, more contrast | `#8F0406` | `#700204` | `#8F0406` | `#700204` | `#8F0406` |
-| Dark, more contrast | `#FFA29C` | `#FFB5B0` | `#FF9A92` | `#FFB5B0` | `#FF9A92` |
-
-Use matching soft and on-accent pairs: light `rgba(246, 13, 16, 0.09)` with
-`#F7F9F7`; dark `rgba(255, 105, 97, 0.15)` with `#151815`; light increased contrast
-`rgba(143, 4, 6, 0.14)` with `#F7F9F7`; and dark increased contrast
-`rgba(255, 162, 156, 0.20)` with `#111411`.
-
-Exact Relux red is not a text token. Its contrast is 3.88:1 on the light canvas and
-4.21:1 on white, below the 4.5:1 target for ordinary text. Reserve it for the logo and
-tested non-text geometry. The semantic accents remain at least 5.13:1 on baseline
-surfaces; increased-contrast variants remain at least 7.09:1 on their supported
-surfaces. Keep success green and warning and information colors functional rather
-than forcing every state into the brand ramp.
-
-## Product palette workflow
-
-1. Choose a low-chroma neutral family for large surfaces. It may lean warm, cool, or
-   toward the product accent without becoming monochromatic.
-2. Choose one accent that represents product identity and primary actions.
-3. Add one supporting hue only when the domain needs it, such as live status, media
-   categorization, or a secondary data series.
-4. Derive hover, pressed, selected, and focus values independently for light and dark
-   themes. Do not use a generic percentage darken function.
-5. Keep links distinguishable from body text and actions. Link color may be different
-   from the product accent.
-6. Define feedback colors independently from brand colors.
-7. Validate all required foreground/background and non-text pairs before use.
-
-Apple's semantic color approach is a useful model: name roles by function and adapt
-each role to appearance and contrast settings. Do not copy platform RGB values without
-testing them in the web product's typography, surfaces, and browser rendering.
-
-### Example expression directions
-
-- **Relux Works studio:** neutral cool canvas with the accessible semantic red ramp.
-- **Pulsar:** neutral canvas with a slight blue-violet tint, violet accent, optional
-  warm gold for a specific media or live state.
-- **Developer infrastructure:** neutral or slightly cool canvas, blue or green accent,
-  with code and status colors kept functionally distinct.
-
-These are directions, not complete palettes. Each requires the full theme and state
-set before implementation.
+These belong to the Relux Works operator artwork and change for no product. They are not Swarma
+interface colours: Relux red has 3.93:1 on the Swarma light page ground. Under forced colours all
+three map to `CanvasText`.
 
 ## Theme requirements
 
-Every product supports all of these:
+Inherited from Relux. Every Swarma surface supports:
 
 1. Light appearance from `prefers-color-scheme: light`.
 2. Dark appearance from `prefers-color-scheme: dark`.
 3. Increased contrast in both appearances from `prefers-contrast: more`.
 4. Reduced transparency from `prefers-reduced-transparency: reduce` where supported.
-5. Forced colors with system color keywords and visible native focus.
+5. Forced colours with system colour keywords and visible native focus.
 
-A user-controlled theme switch is optional. When present, `system` is the default and
-the explicit choice is persisted without a flash of the wrong appearance.
+A user-controlled theme switch is optional. When present, `system` is the default and the explicit
+choice is persisted without a flash of the wrong appearance.
 
-## Contrast targets
+## Contrast targets and evidence
+
+Inherited targets:
 
 - Body and compact text: at least 4.5:1 against its actual surface.
-- Large text: at least 3:1, but prefer 4.5:1 for durable readability.
-- Focus indicators, input outlines, icons, and meaningful component boundaries: at
-  least 3:1 against adjacent colors.
-- Increased-contrast body text: target 7:1.
+- Large text: at least 3:1; prefer 4.5:1.
+- Focus indicators, input outlines, icons and meaningful component boundaries: at least 3:1.
+- Increased-contrast text: 7:1.
 - Disabled controls remain legible and are not distinguished by opacity alone.
-- Charts and states use labels, patterns, or shapes in addition to color.
+- Charts and states use labels, patterns or shapes in addition to colour.
 
-Test real combinations. A token can pass on the page canvas and fail inside a raised
-surface or selected control.
+Evidence is recomputed from the token file, not copied by hand:
+
+```sh
+python3 scripts/check_contrast.py assets/tokens.css
+python3 scripts/check_contrast.py assets/tokens.css --report references/contrast-report.md
+python3 scripts/check_contrast.py assets/tokens.css --control
+```
+
+The first command checks every declared pair in all four palettes and exits 1 on any failure. The
+second also writes [contrast-report.md](contrast-report.md). The third injects a known failing value
+in memory and must exit 1; it proves that the check can fail. The script uses WCAG 2.x relative
+luminance and composites translucent tokens over `--color-bg`. It does not replace measuring the
+rendered product in a browser, which the QA reference requires.
 
 ## Dark mode
 
-Dark mode is separately art-directed:
+Inherited rules apply: dark mode is separately tuned, not an inversion; no pure black or pure
+white; the canvas is darker than surfaces; accents gain luminance; shadows soften; imagery, logos,
+syntax colours, focus, selection and form controls are checked on their own; `color-scheme: light
+dark`.
 
-- Avoid pure black backgrounds and pure white text. They cause glare and erase depth.
-- Keep the page canvas darker than surfaces. Raised surfaces need a small luminance
-  step, not a strong border or glow.
-- Reduce accent saturation or raise luminance as needed. A light-theme accent rarely
-  transfers unchanged.
-- Use softer shadows and rely more on surface separation. Do not surround every object
-  with a bright stroke.
-- Check imagery, logos, screenshots, syntax colors, focus, selection, and browser form
-  controls independently.
-- Use the approved red-and-white logo variant on dark surfaces. Relux ink has only
-  about 1.06:1 contrast on the dark canvas and must not be used there.
-- Use `color-scheme: light dark` so native controls match the active system appearance.
+Swarma specifics:
+
+- The dark neutrals keep the cool blue-grey tint of the light ones.
+- Book figures do not take the dark theme. They keep their white ground (`--color-figure-ground`)
+  inside a frame; see [diagrams.md](diagrams.md).
+- Use the dark operator artwork on dark surfaces; Relux ink must not sit on a dark surface.
 
 ## Materials and gradients
 
-Translucency communicates a floating layer, not general polish.
-
-- Allow backdrop blur for sticky navigation, a popover, or a non-blocking overlay when
-  content visibly passes underneath.
-- Do not stack translucent surfaces. Use an opaque or near-opaque fallback for reduced
-  transparency, unsupported browsers, and busy content.
-- Keep material text high contrast and test it over representative underlying content.
-- Use solid action controls. Do not use gradients to make an ordinary button feel more
-  important.
-- Do not use gradient page backgrounds, decorative color orbs, bokeh, glow fields, or
-  a one-hue wash as the product identity.
-- Gradients inside real media, data visualizations, or domain imagery are acceptable
-  when they encode information or belong to the artifact itself.
+Inherited from Relux. Translucency marks a floating layer only; never stack translucent surfaces;
+provide an opaque fallback for reduced transparency. No gradient page backgrounds, colour orbs, bokeh,
+glow fields or one-hue washes. The book's diagrams have no gradients at all (`diagram-style:9`), so
+Swarma uses gradients only inside real data visualisations that encode information.
 
 ## Implementation rules
 
-- Put literal colors only in the theme token layer, illustrations, and data-series
-  definitions. Component styles reference semantic tokens.
-- Keep fixed brand tokens outside product override boundaries. Under forced colors,
-  map all three to `CanvasText` so the separated mark remains recognizable.
-- Use product overrides at a theme boundary such as `[data-product="pulsar"]`, not in
-  individual button or card selectors.
-- Change a palette as a complete tested set. Never override only `--color-accent` and
-  assume hover, focus, selected, dark, and high-contrast states remain coherent.
-- Prefer borders over shadows for operational density. Prefer spacing over either when
-  hierarchy can be expressed structurally.
-- Keep browser selection, focus, autofill, validation, and visited-link behavior in
-  the color review.
-- Record contrast results with the foreground token, background token, appearance,
-  ratio, and tool used.
+- Literal colours live only in the theme token layer, illustrations and data-series definitions.
+- Keep operator tokens and `--color-figure-ground` outside product override boundaries.
+- Change a palette only as a complete tested set and rerun `scripts/check_contrast.py`.
+- Prefer borders over shadows for operational density, and spacing over either where structure
+  suffices.
+- Keep browser selection, focus, autofill, validation and visited-link behaviour in the colour
+  review.
+- Record contrast results with the foreground token, background token, appearance, ratio and tool;
+  the generated report does this.

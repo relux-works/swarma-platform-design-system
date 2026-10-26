@@ -1,0 +1,15 @@
+Swarma Platform Design System
+
+This project is a fork of the Relux Works product web design system, published by Relux Works, LLC
+under the MIT License. The original copyright notice and licence are kept in LICENSE.
+
+The Relux Works logo artwork in assets/relux-* is the approved corporate identity of Relux Works. It
+is included for operator attribution on Swarma surfaces, and its use follows the rules in
+references/brand-identity.md: it is copied unchanged and never redrawn, recoloured or retyped.
+
+The PT Sans, PT Serif and PT Mono fonts named by this system are not bundled here. They are licensed
+under the SIL Open Font License 1.1 and are installed by each product from their published packages:
+
+- PT Sans: Copyright © 2009 ParaType Ltd.
+- PT Serif: Copyright © 2010 ParaType Ltd.
+- PT Mono: Copyright © 2010 ParaType Inc., ParaType Ltd.

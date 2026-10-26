@@ -1,17 +1,17 @@
 {
   "locales": {
     "en": {
-      "description": "Design, build, migrate, or review Relux Works product websites using the approved logo and shared family system for typography, semantic color tokens, responsive layout, themes, navigation, motion, WCAG 2.2 AA accessibility, RTL, factual content, discovery, and visual QA.",
-      "display_name": "Relux Product Web Design",
-      "short_description": "Design and review consistent Relux Works product websites",
-      "default_prompt": "Use $relux-product-web-design to apply the approved Relux Works logo and product-family identity to this website, including accessible themes, responsive geometry, RTL, evidence-led content, and visual QA.",
+      "description": "Design, build, migrate, or review Swarma platform web surfaces with the Swarma Platform Design System: PT type, the book's deep-blue accent and cool neutrals, diagram roles and status colours as semantic tokens, the trust-boundary sign, book figures on their white ground, an empty logo slot awaiting owner artwork, the Relux Works operator lockup, accessible themes, responsive layout, motion limits, WCAG 2.2 AA, RTL, the book's Russian copy rules, factual content, discovery, and visual QA.",
+      "display_name": "Swarma Platform Design System",
+      "short_description": "Design and review Swarma platform web surfaces",
+      "default_prompt": "Use $swarma-platform-design-system to apply the Swarma identity and the inherited Relux Works foundations to this web surface, including the PT type family, semantic tokens with diagram roles and statuses, accessible themes, book figures, the empty logo slot, evidence-led content, and visual QA.",
       "local_prefix": "[local] "
     },
     "ru": {
-      "description": "Проектирование, разработка, перенос и проверка сайтов продуктов Relux Works с утвержденным логотипом и по единой системе: типографика, семантические цветовые токены, адаптивная сетка, темы, навигация, движение, доступность по WCAG 2.2 AA, RTL, профессиональный текст, обнаружимость и визуальная проверка.",
-      "display_name": "Дизайн сайтов продуктов Relux Works",
-      "short_description": "Единый дизайн и проверка сайтов продуктов Relux Works",
-      "default_prompt": "Используй $relux-product-web-design, чтобы применить к сайту утвержденный логотип и фирменную систему Relux Works: доступные темы, адаптивную сетку, RTL, доказательный текст и визуальную проверку.",
+      "description": "Проектирование, разработка, перенос и проверка веб-поверхностей платформы Swarma по дизайн-системе Swarma: шрифты PT, тёмно-синий акцент и холодные нейтральные цвета книги, роли диаграмм и цвета статусов как семантические токены, знак границы доверия, рисунки книги на белой подложке, пустое место под логотип до рисунка владельца, операторский логотип Relux Works, доступные темы, адаптивная сетка, ограничения движения, доступность по WCAG 2.2 AA, RTL, правила русского текста из книги, доказательный текст, обнаружимость и визуальная проверка.",
+      "display_name": "Дизайн-система платформы Swarma",
+      "short_description": "Дизайн и проверка веб-поверхностей Swarma",
+      "default_prompt": "Используй $swarma-platform-design-system, чтобы применить к веб-поверхности айдентику Swarma и унаследованные основы Relux Works: шрифты PT, семантические токены с ролями диаграмм и статусами, доступные темы, рисунки книги, пустое место под логотип, доказательный текст и визуальную проверку.",
       "local_prefix": "[локально] "
     }
   }

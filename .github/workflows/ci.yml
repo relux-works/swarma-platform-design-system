@@ -1,0 +1,38 @@
+name: CI
+'on':
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      IDENT_DENY_TOKENS: ${{ secrets.IDENT_DENY_TOKENS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Contrast
+        run: python3 scripts/check_contrast.py
+      - name: Contrast negative control
+        shell: bash
+        run: |
+          mkdir -p .temp
+          set +e
+          python3 scripts/check_contrast.py --control > .temp/contrast-control.log 2>&1
+          control_status=$?
+          set -e
+          cat .temp/contrast-control.log
+          test "$control_status" -eq 1
+          grep -Eq '^FAIL light[[:space:]]+text-faint on bg[[:space:]]' .temp/contrast-control.log
+      - name: Hygiene and link controls
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: Repository hygiene
+        run: python3 scripts/check_hygiene.py
+      - name: Markdown links
+        run: python3 scripts/check_links.py

@@ -228,8 +228,10 @@ review. A checklist without observed output is not test evidence.
 - Validate canonical and reciprocal `hreflang` links.
 - Confirm draft and preview routes are `noindex` and absent from public discovery files.
 - Check social image crops and actual product representation.
-- Compare the header, footer, favicon, avatar, `Organization.logo`, and social artwork
+- Compare the footer lockup, favicon, avatar, `Organization.logo`, and social artwork
   with the approved Relux SVGs and confirm their light/dark variants agree.
+- Confirm the Swarma mark slot holds approved owner artwork or the text wordmark, and
+  that no other Swarma mark, symbol or placeholder appears on any surface.
 - Check the generated 16/32/48 px ICO and 180 × 180 px Apple touch fallback against the
   plated light avatar.
 - Check robots behavior for intended search and answer-system crawlers without broadly
@@ -246,8 +248,8 @@ Open screenshots at full size and review them as a composition:
 - Is part of the next section visible without creating an empty hero?
 - Are the header, headings, summaries, rows, actions, and footer on coherent axes?
 - Does the type hierarchy work without relying on accent color?
-- Does the approved outlined wordmark remain crisp and subordinate to the product at
-  its actual header/footer size?
+- Does the approved outlined operator wordmark remain crisp at its actual footer size,
+  and do its placement and width meet the measures in brand-identity.md?
 - Does dark mode preserve depth without glare, bright borders, or saturated large
   surfaces?
 - Is product expression visible without turning the page into a one-hue theme?
@@ -270,8 +272,11 @@ The change is complete only when:
 - WCAG 2.2 Level AA exceptions, if any, have an accessible alternative, owner,
   remediation date, and matching public disclosure; the product is not described as
   fully conformant while an exception remains.
+- `python3 scripts/check_contrast.py assets/tokens.css` (or the product's copy of the
+  check against its shipped tokens) exits 0, and the `--control` run exits 1.
 - Semantic interface tokens pass contrast validation and contain no pure black or pure
-  white. Approved knockout logo artwork may use the fixed `#FFFFFF` brand token.
+  white. Approved knockout logo artwork may use the fixed `#FFFFFF` brand token, and book
+  figures keep their fixed white ground.
 - Corporate artwork passes path-integrity, minimum-size, clear-space, theme, metadata,
   and RTL checks.
 - Required viewport, appearance, direction, locale, and interaction coverage is done.
@@ -279,5 +284,10 @@ The change is complete only when:
 - Visible and machine-readable facts agree.
 - The accessibility statement is current, reachable, localized with the product, and
   includes a monitored feedback and escalation path.
-- Intentional family-system deviations are recorded.
+- Intentional deviations from this system are recorded.
+- Swarma checks pass: PT Sans, PT Serif and PT Mono load from the product's own origin in
+  the needed subsets; role and status colours always come with text; trust-boundary
+  containers appear only around real boundaries; book figures follow
+  [diagrams.md](diagrams.md); Russian strings contain no guillemets and no connector
+  dashes.
 - No unrelated files were reformatted, reverted, staged, or committed.

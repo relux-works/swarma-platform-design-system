@@ -1,26 +1,25 @@
 # Triggers (en)
 
-- Relux product website
-- Relux Works logo
-- Relux brand identity
-- Relux identics
-- new Relux identity
-- Relux brand guidelines
-- product family design
-- internal product site
-- landing page design
-- website visual consistency
-- product design system
-- web typography
-- semantic color palette
+- Swarma website design
+- Swarma platform design system
+- Swarma identity
+- Swarma brand guidelines
+- Swarma logo slot
+- Swarma typography
+- PT Sans PT Serif PT Mono
+- Swarma color palette
+- diagram role colors
+- status badge colors
+- trust boundary component
+- book figures on the site
+- Swarma documentation design
+- Swarma operator tool design
 - dark mode website
 - responsive layout review
 - navigation design
 - RTL website
 - website accessibility review
 - WCAG 2.2 AA review
-- accessible authentication
 - axe-core accessibility gate
 - visual QA
-- migrate barycenter.live design
-- bring this site into the Relux style
+- bring this page into the Swarma style

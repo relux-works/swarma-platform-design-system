@@ -1,7 +1,7 @@
 interface:
-  display_name: "Relux Product Web Design"
-  short_description: "Design and review consistent Relux Works product websites"
+  display_name: "Swarma Platform Design System"
+  short_description: "Design and review Swarma platform web surfaces"
   icon_small: "./assets/relux-avatar-light.svg"
   icon_large: "./assets/relux-avatar-light.svg"
-  brand_color: "#F60D10"
-  default_prompt: "Use $relux-product-web-design to apply the approved Relux Works logo and product-family identity to this website, including accessible themes, responsive geometry, RTL, evidence-led content, and visual QA."
+  brand_color: "#23466E"
+  default_prompt: "Use $swarma-platform-design-system to apply the Swarma identity and the inherited Relux Works foundations to this web surface, including the PT type family, semantic tokens with diagram roles and statuses, accessible themes, book figures, the empty logo slot, evidence-led content, and visual QA."
