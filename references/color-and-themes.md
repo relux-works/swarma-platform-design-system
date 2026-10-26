@@ -64,6 +64,18 @@ contrast targets; dark and more-contrast values are derived from the same hues.
 functional, and the book has no feedback colours of its own. The full set, including hover,
 pressed, soft, control and overlay values, is in `assets/tokens.css`.
 
+Control foregrounds are paired by state. Pressed controls use `--color-control-text-pressed`
+on `--color-control-pressed`; default and hover keep `--color-control-text`.
+
+| Pair | Light foreground / background | Dark foreground / background | Light, more contrast | Dark, more contrast | Forced colors |
+| --- | --- | --- | --- | --- | --- |
+| `--color-control-text` / `--color-control` | `#1d2126` / `#fafbfc` | `#e5e8ec` / `#1a2027` | `#0f1216` / `#fafbfc` | `#f2f4f6` / `#171c22` | `ButtonText` / `ButtonFace` |
+| `--color-control-text` / `--color-control-hover` | `#1d2126` / `#eef1f5` | `#e5e8ec` / `#222931` | `#0f1216` / `#e3e8ee` | `#f2f4f6` / `#222931` | `ButtonText` / `ButtonFace` |
+| `--color-control-text-pressed` / `--color-control-pressed` | `#1d2126` / `#e8ecf1` | `#e5e8ec` / `#151a20` | `#0f1216` / `#ebeef3` | `#f2f4f6` / `#12161b` | `HighlightText` / `Highlight` |
+
+The pressed foreground reuses the existing text value in the four palettes. Its separate
+semantic role preserves the system's selected-state pairing under forced colors.
+
 Two recorded consequences:
 
 - Links have less than 3:1 against body text in every appearance, so links in prose are always
@@ -171,9 +183,10 @@ python3 scripts/check_contrast.py assets/tokens.css --report references/contrast
 python3 scripts/check_contrast.py assets/tokens.css --control
 ```
 
-The first command checks every declared pair in all four palettes and exits 1 on any failure. The
+The first command measures every declared pair with Chromium in all four palettes, with and without
+reduced transparency and forced colors, and exits 1 on any failure. The
 second also writes [contrast-report.md](contrast-report.md). The third injects a known failing value
-in memory and must exit 1; it proves that the check can fail. The script uses WCAG 2.x relative
+in memory and must exit 1; it proves that the check can fail. The script uses computed browser colors and WCAG 2.x relative
 luminance and composites translucent tokens over `--color-bg`. It does not replace measuring the
 rendered product in a browser, which the QA reference requires.
 

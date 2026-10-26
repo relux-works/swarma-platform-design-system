@@ -136,6 +136,24 @@ Inherited:
   content").
 - Validate near the affected field and preserve the layout when feedback appears.
 
+Controls pair `--color-control-text` with the default and hover backgrounds. A pressed state
+uses `--color-control-text-pressed` with `--color-control-pressed`, including a persistent
+`aria-pressed="true"` toggle. This keeps ButtonFace/ButtonText and Highlight/HighlightText paired
+under forced colors.
+
+```css
+.control {
+  color: var(--color-control-text);
+  background-color: var(--color-control);
+}
+.control:hover { background-color: var(--color-control-hover); }
+.control:active,
+.control[aria-pressed="true"] {
+  color: var(--color-control-text-pressed);
+  background-color: var(--color-control-pressed);
+}
+```
+
 ## Swarma components
 
 Each component below exists because the book uses the same element with the same meaning. None of
