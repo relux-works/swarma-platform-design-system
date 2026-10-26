@@ -30,7 +30,7 @@ class Controls(unittest.TestCase):
         environment = {**os.environ, "HOME": str(self.root), "CI": "", "IDENT_DENY_TOKENS": "zz-host-alpha",
                        "IDENT_DENY_TOKENS_OPTIONAL": "", **(env or {})}
         result = subprocess.run([sys.executable, str(ROOT / "scripts" / script), "--root", str(self.root)],
-                                capture_output=True, text=True, timeout=10, env=environment)
+                                capture_output=True, text=True, timeout=60, env=environment)
         self.assertEqual(result.returncode, 1 if rule else 0, result.stdout + result.stderr)
         if rule:
             self.assertTrue(any(re.search(r": " + re.escape(rule) + r"(?:: |$)", line) for line in result.stdout.splitlines()), result.stdout)
@@ -183,7 +183,7 @@ class Controls(unittest.TestCase):
                  '![Image](<../a (b).svg#image>)\n[Escaped](../a%20(b).svg)\n'
                  '[Named][ref]\n[ref][]\n[ref]\n[ref]: ../target.md "Title"\n<a href="../target.md#explicit">HTML</a>\n'
                  '[External](https://example.org/missing)\n[Mail](mailto:reader@example.org)\n'
-                 '`[Code](missing.md)`\n```md\n[Example](missing.md)\n```\n')
+                 '`[Code](missing.md)`\n```md\n[Example](missing.md)\n```\n[Literal][undefined]\n')
         self.run_check("check_links.py")
 
     # A missing target, fragment, reference or out-of-repository path fails its intended resolution rule.
@@ -191,12 +191,12 @@ class Controls(unittest.TestCase):
         self.put("target.md", "# Existing\n")
         for text, rule in [('[Missing](missing.md)', 'markdown-link'), ('![Missing](missing.svg)', 'markdown-link'),
                            ('<a href="missing.md">Missing</a>', 'markdown-link'),
-                           ('[Missing][undefined]', 'markdown-link'), ('[Missing](target.md#absent)', 'markdown-anchor'),
+                           ('[Missing](target.md#absent)', 'markdown-anchor'),
                            ('[Escape](../outside.md)', 'markdown-link')]:
             with self.subTest(text=text):
                 self.put("page.md", text)
                 result = subprocess.run([sys.executable, str(ROOT / "scripts/check_links.py"), "--root", str(self.root)],
-                                        capture_output=True, text=True, timeout=10)
+                                        capture_output=True, text=True, timeout=60)
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn(": " + rule + ": ", result.stdout)
                 print(f"control check_links.py: {rule}: exit {result.returncode}")
@@ -274,7 +274,7 @@ class Controls(unittest.TestCase):
     # Malformed supported formats cannot silently skip the decoded-value policy.
     def test_publication_decode_errors(self):
         for path, value in [("probe.json", '{"label":'), ("probe.svg", '<svg><text>'),
-                            ("probe.css", 'p {content:"unfinished}'), ("probe.css", '/* unfinished')]:
+                            ("probe.css", 'p {content:"unfinished\n}'), ("probe.css", 'p {background: url(foo bar)}')]:
             with self.subTest(path=path):
                 self.put(path, value)
                 self.run_check("check_hygiene.py", "publication-decode")
@@ -299,12 +299,149 @@ class Controls(unittest.TestCase):
             self.put("page.md", f"[Literal]({path}#literal)")
             self.run_check("check_links.py")
 
+    # Browser-ignored corrective at-rules cannot conceal an effective white-on-white token override.
+    def test_comment_separated_at_keyword(self):
+        css = (ROOT / "assets/tokens.css").read_text()
+        white = ':root {--color-text:#ffffff;--color-bg:#ffffff;}'
+        ignored = ''.join('@/**/media (prefers-color-scheme: ' + scheme + ') {' + css + '}'
+                          for scheme in ['light', 'dark'])
+        self.contrast(css + white + ignored, r"FAIL light\s+text on bg\s+1\.00")
+        valid = ''.join('@media/**/ (prefers-color-scheme: ' + scheme + ') {' + css + '}'
+                        for scheme in ['light', 'dark'])
+        self.contrast(css + white + valid)
+
+    # Indented and nested CommonMark code has no live IDs or links; real markup and headings do.
+    def test_indented_code_anchors(self):
+        self.put("page.md", "[Ghost](target.md#ghost)")
+        for code in ['    <div id="ghost">Text</div>\n',
+                     '>     <div id="ghost">Text</div>\n',
+                     '- Example\n\n      <div id="ghost">Text</div>\n']:
+            with self.subTest(code=code):
+                self.put("target.md", '# Actual\n\n' + code)
+                self.run_check("check_links.py", "markdown-anchor")
+                self.put("target.md", '# Ghost\n\n' + code)
+                self.run_check("check_links.py")
+        self.put("target.md", '<div id="ghost">Text</div>\n')
+        self.put("page.md", '[Ghost](target.md#ghost)\n\n    [Code](missing.md)\n')
+        self.run_check("check_links.py")
+
+    # Formatting can split a prohibited literal in source but cannot hide its rendered contiguous text.
+    def test_rendered_markdown_literals(self):
+        for value in ['zz-host-**alpha**', 'zz-host-*alpha*', 'zz-host-__alpha__',
+                      'zz-host-~~alpha~~', 'zz-host-`alpha`', 'zz-host-[alpha](https://example.org)']:
+            with self.subTest(value=value):
+                self.put("probe.md", value.replace("alpha", "public"))
+                self.run_check("check_hygiene.py")
+                self.put("probe.md", value)
+                result = self.run_check("check_hygiene.py", "deny-token")
+                self.assertNotIn("zz-host-alpha", (result.stdout + result.stderr).lower())
+        self.put("probe.md", '@rea**der**:example.org')
+        self.run_check("check_hygiene.py", "matrix-user")
+
+    # Chromium independently confirms that the CommonMark result has no code-only anchor and joins emphasized text.
+    def test_markdown_browser_witness(self):
+        source = r"""
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+import {inspectDocument} from './scripts/publication-engine.mjs';
+const browser = await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined});
+try {
+  const page = await browser.newPage();
+  const negative = inspectDocument({suffix:'.md', source:'# Target\n\n    <div id="ghost">Code</div>\n\nzz-host-**alpha**'});
+  await page.setContent(negative.html);
+  assert.equal(await page.locator('#ghost').count(), 0);
+  assert.ok((await page.locator('body').innerText()).includes('zz-host-alpha'));
+  const positive = inspectDocument({suffix:'.md', source:'# Target `code`\n\n<div id="ghost">Public text</div>'});
+  await page.setContent(positive.html);
+  assert.equal(await page.locator('#ghost').count(), 1);
+  assert.equal(await page.locator('#target-code').count(), 1);
+  assert.ok(!(await page.locator('body').innerText()).includes('zz-host-alpha'));
+  console.log('CommonMark browser witnesses and clean controls passed');
+} finally { await browser.close(); }
+"""
+        result = subprocess.run(['node', '--input-type=module', '-e', source], cwd=ROOT,
+                                env={**os.environ, 'TMPDIR': str(self.root)}, capture_output=True, text=True, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('browser witnesses and clean controls passed', result.stdout)
+
+    # A genuine unreadable denied basename fails safely; a readable neighbor passes and permissions are restored.
+    def test_unreadable_publication_redaction(self):
+        path = self.root / "zz-host-alpha.txt"
+        self.put(path.name, "Ordinary text")
+        path.chmod(0)
+        try:
+            with self.assertRaises(PermissionError):
+                path.read_text()
+            result = self.run_check("check_hygiene.py", "identifier-scan")
+            self.assertNotIn("zz-host-alpha", (result.stdout + result.stderr).lower())
+            self.assertNotIn("Traceback", result.stdout + result.stderr)
+        finally:
+            path.chmod(0o600)
+        path.rename(self.root / "readable.txt")
+        self.run_check("check_hygiene.py")
+
+    # Every check's top-level boundary suppresses exception payloads and redacts tokens split across writes.
+    def test_top_level_diagnostic_boundaries(self):
+        for module, rule in [('check_hygiene', 'identifier-scan'), ('check_links', 'markdown-link'),
+                             ('check_contrast', 'contrast-browser')]:
+            with self.subTest(module=module):
+                source = ("import sys\nsys.path.insert(0, " + repr(str(ROOT / 'scripts')) + ")\n"
+                          "import " + module + " as check\n"
+                          "def broken():\n print('zz-host-', end='')\n print('alpha')\n"
+                          " raise OSError('zz-host-alpha.txt')\n"
+                          "sys.exit(check.run_cli(broken, " + repr(rule) + "))\n")
+                result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True,
+                                        env={**os.environ, 'IDENT_DENY_TOKENS': 'zz-host-alpha'})
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(rule, result.stderr)
+                self.assertIn('[redacted]', result.stdout)
+                self.assertNotIn('zz-host-alpha', (result.stdout + result.stderr).lower())
+                self.assertNotIn('Traceback', result.stdout + result.stderr)
+
+    # Traversal errors and publication symlinks reject without exposing denied directory names or reading targets.
+    def test_traversal_redaction(self):
+        directory = self.root / 'zz-host-alpha'
+        directory.mkdir()
+        directory.chmod(0)
+        try:
+            with self.assertRaises(PermissionError):
+                list(directory.iterdir())
+            for script, rule in [('check_hygiene.py', 'identifier-scan'), ('check_links.py', 'markdown-link')]:
+                result = self.run_check(script, rule)
+                self.assertNotIn('zz-host-alpha', (result.stdout + result.stderr).lower())
+                self.assertNotIn('Traceback', result.stdout + result.stderr)
+        finally:
+            directory.chmod(0o700)
+        self.put('readable.txt', 'Ordinary text')
+        for script in ['check_hygiene.py', 'check_links.py']:
+            self.run_check(script)
+        (self.root / 'link.txt').symlink_to(self.root / 'readable.txt')
+        self.run_check('check_hygiene.py', 'identifier-scan')
+        (self.root / 'link.txt').unlink()
+        self.run_check('check_hygiene.py')
+
+    # Text publication rejects UTF-8 BOM and non-UTF-8 encodings; ordinary UTF-8 and binary artwork remain valid.
+    def test_publication_encoding(self):
+        for path, data in [('probe.md', b'\xef\xbb\xbfSwarma'),
+                           ('probe.html', '<p>Swarma</p>'.encode('utf-16')),
+                           ('probe.svg', '<svg><text>Swarma</text></svg>'.encode('utf-16')),
+                           ('probe.txt', b'\xffSwarma'),
+                           ('probe.html', '<p>Swarma</p>'.encode('utf-16-le'))]:
+            with self.subTest(path=path):
+                self.put(path, 'Swarma' if not path.endswith('.svg') else '<svg><text>Swarma</text></svg>')
+                self.run_check('check_hygiene.py')
+                (self.root / path).write_bytes(data)
+                self.run_check('check_hygiene.py', 'publication-encoding')
+                (self.root / path).unlink()
+        (self.root / 'art.png').write_bytes(b'\xff\x00')
+        self.run_check('check_hygiene.py')
+
     def contrast(self, css, diagnostic=None, report=False):
         self.put("tokens.css", css)
         command = [sys.executable, str(ROOT / "scripts/check_contrast.py"), str(self.root / "tokens.css")]
         if report:
             command += ["--report", str(self.root / "report.md")]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 1 if diagnostic else 0, result.stdout + result.stderr)
         if diagnostic:
             self.assertRegex(result.stdout + result.stderr, diagnostic)
@@ -340,30 +477,40 @@ class Controls(unittest.TestCase):
         self.contrast(css)
         self.contrast(css + '@media (forced-colors: active) {:root {--color-text: Canvas;}}', r"forced-color-role")
 
-    # Unknown cascade constructs and unresolved colors reject explicitly rather than producing misleading passing ratios.
-    def test_contrast_unsupported_contract(self):
+    # The former pressed mapping is a numeric browser failure; the approved HighlightText pairing passes.
+    def test_pressed_forced_color_pair(self):
         css = (ROOT / "assets/tokens.css").read_text()
-        for plant in ['body {--color-text:#ffffff;}', '@layer extra {:root {--color-text:#ffffff;}}',
-                      '@supports (display:grid) {:root {--color-text:#ffffff;}}', '@import "other.css";',
-                      ':root {--color-text:var(--missing);}', ':root {--color-text:var(--color-text);}',
-                      ':root {--color-text:light-dark(white,black);}', ':root {--color-text:#ffffff;',
-                      ': root {--color-text:#ffffff;}', '@ media (prefers-color-scheme: dark) {}',
+        self.contrast(css)
+        self.contrast(css + '@media (forced-colors: active) {:root {--color-control-text-pressed:ButtonText;}}',
+                      r"FAIL light/forced\s+control-text-pressed on control-pressed\s+[0-9.]+")
+
+    # CSS validity and cascade behavior come from Chromium, including selectors, layers and modern color functions.
+    def test_browser_css_contract(self):
+        css = (ROOT / "assets/tokens.css").read_text()
+        for plant in [': root {--color-text:#ffffff;}', '@ media (prefers-color-scheme: dark) {}',
                       '@media ("prefers-color-scheme": dark) {}',
-                      ':root {--color-text:rgba(0,0,0,2);}', ':root {--color-text:#ffffff #000000;}',
-                      ':root {--color-text:rgb/**/(0,0,0);}', ':root {--color-text:rgba(0,0,0,0 . 1);}',
-                      ':root {--color-text:Canvas/**/Text;}']:
+                      '@layer extra {:root {--color-text:#ffffff;}}']:
             with self.subTest(plant=plant):
-                self.contrast(css + plant, r"contrast-css:")
+                self.contrast(css + plant)
+        for plant in [':root {--color-text:var(--missing);}', ':root {--color-text:var(--color-text);}',
+                      ':root {--color-text:#ffffff #000000;}', ':root {--color-text:rgb/**/(0,0,0);}',
+                      ':root {--color-text:rgba(0,0,0,0 . 1);}', ':root {--color-text:Canvas/**/Text;}']:
+            with self.subTest(plant=plant):
+                self.contrast(css + plant, r"contrast-browser:")
+        self.contrast(css + ':root {--color-text:light-dark(white,black);}', r"FAIL light")
+        self.contrast(css + 'body {--color-text:#ffffff;}', r"FAIL light")
+        self.contrast(css + '@supports (display:grid) {:root {--color-text:#ffffff;}}', r"FAIL light")
 
     # Real production scripts reject the review witnesses in a complete source copy, with a clean-copy control first.
     def test_complete_repository_regressions(self):
         publication = self.root / "publication"
-        shutil.copytree(ROOT, publication, ignore=shutil.ignore_patterns(".temp", ".git", "__pycache__"))
+        shutil.copytree(ROOT, publication, ignore=shutil.ignore_patterns(".temp", ".git", "__pycache__", "node_modules"))
+        (publication / "node_modules").symlink_to(ROOT / "node_modules", target_is_directory=True)
         environment = {**os.environ, "IDENT_DENY_TOKENS": "zz" + "-integration-alpha", "CI": "true"}
 
         def invoke(script, rule=None):
             result = subprocess.run([sys.executable, str(publication / "scripts" / script)], cwd=publication,
-                                    env=environment, capture_output=True, text=True, timeout=15)
+                                    env=environment, capture_output=True, text=True, timeout=90)
             self.assertEqual(result.returncode, 1 if rule else 0, result.stdout + result.stderr)
             if rule:
                 self.assertIn(rule, result.stdout + result.stderr)
@@ -373,11 +520,20 @@ class Controls(unittest.TestCase):
         (publication / "references/encoded.md").write_text("Русский &#64;reader:example.org\nzz-integration-&#97;lpha")
         invoke("check_hygiene.py", "matrix-user")
         invoke("check_hygiene.py", "deny-token")
+        (publication / "references/encoded.md").write_text('zz-integration-**alpha**')
+        invoke("check_hygiene.py", "deny-token")
         (publication / "references/encoded.md").write_text('[Ghost](target.md#ghost)')
         (publication / "references/target.md").write_text('```html\n<div id="ghost"></div>\n```')
         invoke("check_links.py", "markdown-anchor")
+        (publication / "references/target.md").write_text('    <div id="ghost"></div>\n')
+        invoke("check_links.py", "markdown-anchor")
+        original = (publication / "assets/tokens.css").read_text()
         with (publication / "assets/tokens.css").open("a") as file:
             file.write(':root {--color-text:#ffffff;--color-bg:#ffffff;}')
+        invoke("check_contrast.py", "FAIL light")
+        with (publication / "assets/tokens.css").open("a") as file:
+            file.write(''.join('@/**/media (prefers-color-scheme: ' + scheme + ') {' + original + '}'
+                               for scheme in ['light', 'dark']))
         invoke("check_contrast.py", "FAIL light")
 
 

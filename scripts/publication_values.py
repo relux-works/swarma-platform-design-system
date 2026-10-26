@@ -1,49 +1,45 @@
-"""Decode values in the repository's publication formats, once per consumer context."""
+"""Batch publication decoding through real CommonMark and HTML engines."""
 
-import html
-from html.parser import HTMLParser
 import json
-import re
-from urllib.parse import unquote
+import os
+from pathlib import Path
+import subprocess
 from xml.etree import ElementTree
-from check_common import prose
-from css_syntax import publication_text
 
-URL_ATTRIBUTES = {"href", "src", "srcset", "action", "poster"}
-
-
-def attribute_values(name, value):
-    yield value
-    if name in URL_ATTRIBUTES:
-        yield unquote(value)
-    if name == "style":
-        yield from publication_text(value)
+ENGINE = Path(__file__).with_name("publication-engine.mjs")
+MARKUP = {".md", ".html", ".htm", ".svg", ".css"}
 
 
-class Markup(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.values, self.text, self.styles = [], [], []
-        self.in_style = False
-
-    def handle_starttag(self, tag, attrs):
-        self.in_style = self.in_style or tag == "style"
-        for name, value in attrs:
-            if value is not None:
-                self.values.extend(attribute_values(name, value))
-
-    def handle_endtag(self, tag):
-        if tag == "style":
-            self.in_style = False
-
-    def handle_data(self, data):
-        (self.styles if self.in_style else self.text).append(data)
-
-    def decoded(self):
-        for style in self.styles:
-            yield from publication_text(style)
-        yield "".join(self.text)
-        yield from self.values
+def documents(records):
+    payload, locations, output = [], [], {}
+    for path, source in records:
+        suffix = path.suffix.lower()
+        item = {"suffix": suffix, "source": source}
+        if suffix == ".svg":
+            try:
+                root = ElementTree.fromstring(source)
+                item["xml"] = {
+                    "text": "".join(root.itertext()),
+                    "attributes": [(name.rsplit("}", 1)[-1], value) for node in root.iter() for name, value in node.attrib.items()],
+                    "styles": ["".join(node.itertext()) for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "style"],
+                }
+            except ElementTree.ParseError:
+                output[path] = {"error": "publication-decode"}
+                continue
+        payload.append(item)
+        locations.append(path)
+    if payload:
+        environment = {key: value for key, value in os.environ.items() if key != "IDENT_DENY_TOKENS"}
+        result = subprocess.run(["node", str(ENGINE)], input=json.dumps(payload), text=True,
+                                capture_output=True, timeout=60, env=environment)
+        # Never forward child stderr, JSON errors or exception payloads into a diagnostic.
+        if result.returncode:
+            raise ValueError("publication engine failed")
+        values = json.loads(result.stdout)
+        if not isinstance(values, list) or len(values) != len(locations):
+            raise ValueError("invalid publication result")
+        output.update(zip(locations, values))
+    return output
 
 
 def strings(value):
@@ -56,33 +52,3 @@ def strings(value):
         for key, item in value.items():
             yield key
             yield from strings(item)
-
-
-def decoded(path, text):
-    suffix = path.suffix.lower()
-    if suffix == ".json":
-        yield from strings(json.loads(text))
-    elif suffix == ".svg":
-        root = ElementTree.fromstring(text)
-        yield "".join(root.itertext())
-        for element in root.iter():
-            if element.tag.rsplit("}", 1)[-1] == "style":
-                yield from publication_text("".join(element.itertext()))
-            for name, value in element.attrib.items():
-                yield from attribute_values(name.rsplit("}", 1)[-1], value)
-    elif suffix == ".css":
-        yield from publication_text(text)
-    elif suffix in {".md", ".html", ".htm"}:
-        body = prose(text) if suffix == ".md" else text
-        parser = Markup()
-        parser.feed(body)
-        parser.close()
-        yield from parser.decoded()
-        if suffix == ".md":
-            # Markdown entities and escaped punctuation are decoded outside source code spans/fences.
-            yield html.unescape(re.sub(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])", r"\1", body))
-            from check_links import destination
-            for match in re.finditer(r"\]\([ \t\n]*|(?m:^ {0,3}\[[^]\n]+\]:[ \t]*)", body):
-                value = destination(body, match.end())
-                if value is not None:
-                    yield unquote(html.unescape(value))

@@ -4,7 +4,7 @@
 - Swarma platform design system
 - Swarma identity
 - Swarma brand guidelines
-- Swarma logo slot
+- Swarma logo
 - Swarma typography
 - PT Sans PT Serif PT Mono
 - Swarma color palette

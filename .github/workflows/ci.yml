@@ -11,8 +11,14 @@ jobs:
     runs-on: [self-hosted, swarma-ci]
     env:
       PYTHONDONTWRITEBYTECODE: '1'
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.temp/playwright-browsers
     steps:
       - uses: actions/checkout@v4
+      - name: Node version
+        run: node -e "if (Number(process.versions.node.split('.')[0]) !== 22) process.exit(1); console.log(process.version)"
+      - run: npm ci
+      - name: Chromium
+        run: npx playwright install chromium
       - name: Python version
         run: python3 -c 'import sys; print(sys.version.split()[0]); assert sys.version_info[:2] == (3, 14)'
       - name: Contrast

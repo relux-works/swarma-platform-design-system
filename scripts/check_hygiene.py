@@ -1,30 +1,19 @@
 """Reject internal identifiers and forbidden punctuation in Russian Markdown prose."""
 
+from diagnostics import deny_tokens, run_cli
 import argparse
 import json
 import os
 import re
 import sys
 from pathlib import Path
-from xml.etree.ElementTree import ParseError
-from check_common import ROOT, files, prose
+from check_common import ROOT, files
 from hygiene_rules import EMAIL, IDENTIFIERS, INVOCATION_FILES, PUBLIC_INVOCATION, REPOSITORY, RUSSIAN, RUSSIAN_RULES
-from publication_values import decoded
+from publication_values import MARKUP, documents, strings
 
 # Only generic policy definitions and the isolated controls have generic-rule exemptions.
 EXEMPT = {"scripts/hygiene_rules.py", "scripts/tests/test_ci.py"}
-
-
-def deny_tokens():
-    def split(text):
-        return [token.strip() for token in re.split(r"[,\r\n]+", text) if token.strip()]
-    tokens = split(os.environ.get("IDENT_DENY_TOKENS", ""))
-    if tokens:
-        return tokens
-    try:
-        return split((Path.home() / ".config" / "swarma-site" / "deny-tokens.txt").read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return []
+BINARY = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".woff", ".woff2", ".ttf", ".otf"}
 
 
 def check(root):
@@ -53,27 +42,43 @@ def check(root):
             value = re.sub(re.escape(token), "[redacted]", value, flags=re.IGNORECASE)
         return value
 
+    records = []
     for path in files(root):
         relative = path.relative_to(root).as_posix()
-        label = redacted(relative)
         if any(token.lower() in relative.lower() for token in tokens):
-            errors.append(f"{label}:0: deny-token")
+            errors.append(f"{relative}:0: deny-token")
         if relative not in EXEMPT:
             for rule, pattern in IDENTIFIERS.items():
                 if pattern.search(relative):
-                    errors.append(f"{label}:0: {rule}")
+                    errors.append(f"{relative}:0: {rule}")
         try:
             text = path.read_text(encoding="utf-8")
+            if path.suffix.lower() not in BINARY and (text.startswith("\ufeff") or "\0" in text):
+                errors.append(f"{relative}:0: publication-encoding")
+            else:
+                records.append((path, text))
         except UnicodeDecodeError:
-            if path.suffix.lower() in {".json", ".svg", ".css", ".md", ".html", ".htm"}:
+            if path.suffix.lower() not in BINARY:
+                errors.append(f"{relative}:0: publication-encoding")
+        except OSError:
+            errors.append(f"{relative}:0: identifier-scan: cannot read publication")
+    rendered = documents([(path, text) for path, text in records if path.suffix.lower() in MARKUP])
+    for path, text in records:
+        relative = path.relative_to(root).as_posix()
+        label = redacted(relative)
+        info = rendered.get(path)
+        views = [(text, info["prose"] if info and not info.get("error") else text, 1)]
+        if info:
+            if info.get("error"):
                 errors.append(f"{label}:0: publication-decode")
-            continue  # Binary artwork is not prose or source text; filenames remain checked.
-        body = prose(text) if path.suffix.lower() == ".md" else text
-        views = [(text, body, 1)]
-        try:
-            views.extend((value, value, 0) for value in decoded(path, text))
-        except (ValueError, ParseError):
-            errors.append(f"{label}:0: publication-decode")
+            else:
+                views.append((info["text"], info["prose"], 0))
+                views.extend((value, value, 0) for value in info["values"])
+        elif path.suffix.lower() == ".json":
+            try:
+                views.extend((value, value, 0) for value in strings(json.loads(text)))
+            except ValueError:
+                errors.append(f"{label}:0: publication-decode")
         russian = any(RUSSIAN.search(body) for _, body, _ in views)
         for value, body, start in views:
             # External literals are forbidden even in the exempt policy and control sources.
@@ -97,14 +102,18 @@ def check(root):
                 for number, line in enumerate(body.splitlines(), start):
                     for rule, pattern in RUSSIAN_RULES.items():
                         if pattern.search(line):
-                            errors.append(f"{label}:{number if start else 0}: {rule}")
-    return list(dict.fromkeys(errors))
+                            errors.append(f"{label}:{number if start and info is None else 0}: {rule}")
+    return list(dict.fromkeys(redacted(error) for error in errors))
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
     args = parser.parse_args()
     errors = check(args.root.resolve())
     print("\n".join(errors) if errors else "Hygiene check passed")
-    raise SystemExit(bool(errors))
+    return int(bool(errors))
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_cli(main, "identifier-scan"))

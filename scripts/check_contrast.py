@@ -1,30 +1,21 @@
 #!/usr/bin/env python3
-"""Recompute every contrast ratio of the Swarma token set from assets/tokens.css.
+"""Measure semantic token contrast using Chromium's computed styles.
 
-The restricted stylesheet evaluator applies source order, media conditions,
-!important and var() to the complete stylesheet, including unmarked overrides.
-Numeric ratios cover normal and reduced-transparency appearances; forced colors
-are checked against semantic system-color roles, whose numeric values belong
-to the browser and operating system.
-
-Usage, from the repository root:
-
-    python3 scripts/check_contrast.py assets/tokens.css
-    python3 scripts/check_contrast.py assets/tokens.css --report references/contrast-report.md
-    python3 scripts/check_contrast.py assets/tokens.css --control
-
-`--control` replaces `--color-text-faint` in the light palette with `#9aa1ab`,
-a value known to fail 4.5:1, and must exit 1. It proves that the checker detects
-a violation; it never writes the token file.
-
-Ratios use WCAG 2.x relative luminance. Translucent tokens are alpha-composited
-over `--color-bg` of the same palette before measuring.
+The stylesheet is loaded unchanged in a local fixture. Every pair and appearance
+is rendered by Playwright; Python composites the computed sRGB colors and writes
+the existing four-palette report. The control adds one known failing value only
+to the fixture DOM. No CSS declarations are parsed for color values.
 """
 
+from diagnostics import run_cli
 import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
 import re
 import sys
-from token_cascade import palettes as effective_palettes
+from check_common import ROOT
 
 PALETTES = ["light", "dark", "light-contrast", "dark-contrast"]
 SURFACES = ["bg", "surface-subtle", "surface", "surface-raised", "surface-hover"]
@@ -36,10 +27,6 @@ TEXT = (4.5, 7.0)
 NON_TEXT = (3.0, 3.0)
 
 
-def parse_palettes(css):
-    return effective_palettes(css)[0]
-
-
 def forced_roles():
     groups = {
         "Canvas": SURFACES + ["figure-ground", "text-inverse", "on-accent", "scrim", "material"],
@@ -48,7 +35,7 @@ def forced_roles():
         "ButtonFace": ["control", "control-hover", "strong-action", "strong-action-hover"],
         "ButtonText": ["control-text", "on-strong-action"],
         "Highlight": ["control-pressed", "focus", "selection-bg"],
-        "HighlightText": ["selection-text"],
+        "HighlightText": ["selection-text", "control-text-pressed"],
         "LinkText": ["accent", "accent-hover", "accent-pressed", "link", "link-hover"],
         "transparent": ["accent-soft"],
     }
@@ -73,11 +60,12 @@ def to_rgba(value):
     value = value.strip().lower()
     if re.fullmatch(r"#[0-9a-f]{6}", value):
         return tuple(int(value[i:i + 2], 16) / 255 for i in (1, 3, 5)) + (1.0,)
-    match = re.fullmatch(r"rgba\(\s*(\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\s*\)", value)
+    match = re.fullmatch(r"rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\s*\)", value)
     if match:
         r, g, b, a = match.groups()
-        if all(0 <= int(channel) <= 255 for channel in (r, g, b)) and 0 <= float(a) <= 1:
-            return (int(r) / 255, int(g) / 255, int(b) / 255, float(a))
+        a = a or "1"
+        if all(0 <= float(channel) <= 255 for channel in (r, g, b)) and 0 <= float(a) <= 1:
+            return (float(r) / 255, float(g) / 255, float(b) / 255, float(a))
     raise ValueError("unsupported or invalid color value")
 
 
@@ -114,8 +102,9 @@ def pairs():
     yield "on-accent on accent-hover", "on-accent", "accent-hover", TEXT
     yield "on-strong-action on strong-action", "on-strong-action", "strong-action", TEXT
     yield "on-strong-action on strong-action-hover", "on-strong-action", "strong-action-hover", TEXT
-    for bg in ["control", "control-hover", "control-pressed"]:
+    for bg in ["control", "control-hover"]:
         yield f"control-text on {bg}", "control-text", bg, TEXT
+    yield "control-text-pressed on control-pressed", "control-text-pressed", "control-pressed", TEXT
     yield "selection-text on selection-bg", "selection-text", "selection-bg", TEXT
     yield "text on accent-soft", "text", "accent-soft", TEXT
     yield "accent on accent-soft", "accent", "accent-soft", TEXT
@@ -131,16 +120,41 @@ def pairs():
                f"status-{status}-bg", TEXT)
 
 
-def check(palettes):
+def measure(tokens, control):
+    modes = []
+    for forced in [False, True]:
+        for reduced in [False, True]:
+            for palette in PALETTES:
+                modes.append({"name": palette + ("/reduced" if reduced else "") + ("/forced" if forced else ""),
+                              "scheme": "dark" if palette.startswith("dark") else "light",
+                              "contrast": "more" if palette.endswith("contrast") else "no-preference",
+                              "reduced": "reduce" if reduced else "no-preference",
+                              "forced": "active" if forced else "none"})
+    payload = {"tokens": str(Path(tokens).resolve()), "modes": modes, "roles": forced_roles(), "control": control,
+               "pairs": [{"fg": fg, "bg": bg} for _, fg, bg, _ in pairs()]}
+    environment = {key: value for key, value in os.environ.items() if key != "IDENT_DENY_TOKENS"}
+    result = subprocess.run(["node", str(ROOT / "scripts/measure-contrast.mjs")], input=json.dumps(payload),
+                            capture_output=True, text=True, timeout=90, env=environment)
+    if result.returncode:
+        raise ValueError("contrast-browser")
+    output = json.loads(result.stdout)
+    if output.get("error") or len(output.get("appearances", [])) != len(modes):
+        raise ValueError("contrast-browser")
+    return output
+
+
+def check(appearances):
     results = []
-    for name, tokens in palettes.items():
-        bg = to_rgba(tokens["bg"])
-        more = name.split("/")[0].endswith("contrast")
-        for label, fg_key, bg_key, targets in pairs():
-            target = targets[1] if more else targets[0]
-            back = to_rgba(tokens[bg_key])
-            back_rgb = over(back, bg) if back[3] < 1 else back[:3]
-            fore = to_rgba(tokens[fg_key])
+    for appearance in appearances:
+        name, colors = appearance["name"], appearance["colors"]
+        root = to_rgba(colors["bg"])
+        if root[3] != 1:
+            raise ValueError("root background must be opaque")
+        for (label, _, _, targets), computed in zip(pairs(), appearance["pairs"], strict=True):
+            target = targets[1] if name.split("/")[0].endswith("contrast") else targets[0]
+            back = to_rgba(computed["background"])
+            back_rgb = over(back, root) if back[3] < 1 else back[:3]
+            fore = to_rgba(computed["foreground"])
             fore_rgb = over(fore, back_rgb + (1.0,)) if fore[3] < 1 else fore[:3]
             value = ratio(fore_rgb, back_rgb)
             results.append((name, label, value, target, value + 1e-9 >= target))
@@ -168,28 +182,29 @@ def main():
     args = parser.parse_args()
 
     try:
-        palettes, reduced, forced = effective_palettes(open(args.tokens, encoding="utf-8").read())
-        validate({**palettes, **reduced})
-        if args.control:
-            palettes["light"]["text-faint"] = "#9aa1ab"
-        report_results = check(palettes)
-        results = report_results + check(reduced)
-    except (ValueError, KeyError) as error:
-        print(f"contrast-css: {error}")
+        measured = measure(args.tokens, args.control)
+        appearances = measured["appearances"]
+        palettes = {item["name"]: item["colors"] for item in appearances if item["name"] in PALETTES}
+        validate(palettes)
+        results = check(appearances)
+        report_results = [row for row in results if row[0] in PALETTES]
+        expected = forced_roles()
+        forced = [item for item in appearances if item["forced"]]
+        forced_failures = [item["name"] for item in forced
+                           if any(item["colors"][key] != item["system"][role] for key, role in expected.items())]
+    except (ValueError, KeyError):
+        print("contrast-browser: cannot measure semantic colors")
         return 1
-    failures = [r for r in results if not r[4]]
-    expected = forced_roles()
-    forced_failures = [name for name, tokens in forced.items()
-                       if any(tokens.get(key, "").lower() != value for key, value in expected.items())
-                       or any(value.lower() not in set(expected.values()) for value in tokens.values())]
+    failures = [row for row in results if not row[4]]
 
-    lines = []
+    lines = [f"browser: Chromium {measured['browser']}"]
     for name, label, value, target, ok in results:
         lines.append(f"{'PASS' if ok else 'FAIL'} {name:15s} {label:45s} {value:6.2f} (target {target})")
     for name, label, value in informational(palettes):
         lines.append(f"INFO {name:15s} {label:45s} {value:6.2f}")
-    for name in forced:
-        lines.append(f"{'FAIL' if name in forced_failures else 'PASS'} {name + '/forced':24s} forced-color-role")
+    for item in forced:
+        name = item["name"]
+        lines.append(f"{'FAIL' if name in forced_failures else 'PASS'} {name:32s} forced-color-role")
     lines.append(f"pairs: {len(results)}, failures: {len(failures)}, forced-color failures: {len(forced_failures)}")
     print("\n".join(lines))
 
@@ -201,6 +216,10 @@ def main():
                       "--report references/contrast-report.md`. Do not edit by hand.\n\n")
             out.write("WCAG 2.x relative luminance. Targets: text 4.5:1 (7:1 in the more-contrast "
                       "palettes), non-text 3:1. Translucent tokens are composited over `--color-bg`.\n\n")
+            out.write("Colors are measured with Chromium getComputedStyle. All 16 appearances must pass; "
+                      "this report records the four base palettes. Forced-color control pairs are "
+                      "ButtonText on ButtonFace (default/hover) and HighlightText on Highlight (pressed). "
+                      "Their browser/OS-dependent ratios are checked and printed on each run.\n\n")
             out.write(f"Pairs checked: {len(report_results)}. Failures: 0.\n\n")
             for name in PALETTES:
                 out.write(f"## {name}\n\n| Pair | Ratio | Target | Result |\n| --- | ---: | ---: | --- |\n")
@@ -218,4 +237,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_cli(main, "contrast-browser"))

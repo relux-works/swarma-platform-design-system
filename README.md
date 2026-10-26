@@ -6,77 +6,91 @@ Start with [SKILL.md](SKILL.md) and its resource map. The design provenance is r
 
 ## Tools and checks
 
-All checks use Python 3.12 or newer and its standard library. No package installation is needed.
-CI uses self-hosted Linux x64 runners and asserts Python 3.14 from PATH.
-Run these commands from the repository root:
+The checks use Node 22.23.4 or newer, Python 3.12 or newer and Chromium through Playwright.
+Node dependencies are exact versions in `package.json` and `package-lock.json`.
+CI uses Node 22 and Python 3.14 already on PATH on self-hosted Linux x64 runners.
+From the repository root, install the locked dependencies and browser:
+
+```sh
+npm ci
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/.temp/playwright-browsers"
+npx playwright install chromium
+```
+
+Keep that environment variable set for subsequent checks. A local installed Chromium can instead
+be selected with `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`; record its version in validation evidence.
+CI installs the browser version selected by the locked Playwright dependency.
 
 | Tool / command | Purpose | Output |
 | --- | --- | --- |
-| `python3 scripts/check_contrast.py` | Check effective token contrast pairs and forced-color roles | Console; exit 0 when every target passes |
-| `python3 scripts/check_contrast.py --control` | Inject a known contrast violation in memory | Console; expected exit 1 with a failing light text-faint pair |
-| `python3 scripts/check_contrast.py assets/tokens.css --report references/contrast-report.md` | Recompute the contrast report after a token change | Markdown report and console |
-| `python3 -m unittest discover -s scripts/tests -v` | Run positive and isolated negative controls for publication checks | Console; temporary fixtures under `.temp/` are removed automatically |
-| `python3 scripts/check_hygiene.py` | Reject internal identifiers in UTF-8 source and filenames; reject guillemets and connector dashes in Russian prose | Console diagnostics by path, source line (0 for decoded values) and rule |
-| `python3 scripts/check_links.py` | Resolve relative Markdown links, images and reference destinations, including local heading and explicit HTML anchors | Console diagnostics; no external requests |
-| GitHub Actions, `.github/workflows/ci.yml` | Run the same checks in one `check` job on pull requests and pushes to main | Hosted logs; contrast-control log in `.temp/` |
+| `npm ci` | Install the locked CommonMark, HTML, CSS and browser tooling | `node_modules/` |
+| `npx playwright install chromium` | Install the Playwright Chromium binary | The configured browser cache |
+| `python3 scripts/check_contrast.py` | Measure computed token pairs and forced-color roles in Chromium | Console; exit 0 only when every target passes |
+| `python3 scripts/check_contrast.py --control` | Inject a known failing value in the browser fixture | Console; expected exit 1 with the intended light text-faint failure |
+| `python3 scripts/check_contrast.py assets/tokens.css --report references/contrast-report.md` | Recompute the four base-palette report after all browser appearances pass | Markdown report and console |
+| `python3 -m unittest discover -s scripts/tests -v` | Run clean and isolated negative controls | Console; temporary fixtures under `.temp/` are removed |
+| `python3 scripts/check_hygiene.py` | Check raw source, filenames and consumer-decoded publication values | Redacted rule diagnostics; nonzero on failure |
+| `python3 scripts/check_links.py` | Resolve local links and anchors from rendered Markdown | Redacted diagnostics; no external requests |
+| GitHub Actions, `.github/workflows/ci.yml` | Run the same checks on pull requests and main pushes | Job logs; contrast-control log under `.temp/` |
 
-The contrast command accepts an optional token-file argument, defaulting to `assets/tokens.css`.
-It evaluates the complete stylesheet, including declarations outside palette comments. The accepted
-stylesheet contract is deliberately narrow: `:root` declarations, custom properties and `color-scheme`,
-and nested `@media` conjunctions for `prefers-color-scheme` (light/dark), `prefers-contrast`
-(no-preference/more), `prefers-reduced-transparency` (no-preference/reduce), and `forced-colors`
-(none/active). Within this contract it applies source order, `!important`, CSS escapes and `var()`
-references/fallbacks. Other selectors, at-rules, unresolved/cyclic references, unsupported color values
-and malformed syntax fail with `contrast-css`; expanding the stylesheet contract requires expanding
-and testing the evaluator. This is a restricted static evaluator, not a general browser CSS engine.
+Contrast loads the shipped stylesheet unchanged through a local file URL in a fresh Chromium
+fixture. It renders one element per declared pair, reads foreground/background colors with
+`getComputedStyle`, then computes WCAG 2.x luminance and alpha compositing in Python. CSS source
+is never parsed for color values. The browser resolves selectors, comments, media queries,
+layers, source order, important declarations and variables. A missing browser, unavailable
+media emulation, unreadable resource, invalid semantic color or unsupported computed color
+representation fails with `contrast-browser`. Network resources are blocked.
 
-All effective semantic colors are resolved in 16 appearance combinations. Eight numeric appearances
-(the four palettes, each with and without reduced transparency) measure 1,408 declared pairs using
-six-digit hex and legacy `rgba()` colors. Root backgrounds must be opaque. The other eight forced-color
-appearances must preserve the documented system-color roles. Their numeric colors depend on the browser
-and operating system, so this check establishes role preservation rather than an OS contrast ratio.
-The generated report retains the four base palettes and 704 pairs; report writing requires all
-appearances to pass. Token values, forced-color mappings and non-palette tokens are not changed by checks.
-CI requires the contrast control to exit exactly 1 and report the intended failing pair;
-an unrelated crash or an unexpectedly passing control does not satisfy the gate.
-The unit controls assert each planted hygiene/link violation's named rule and exit 1, and exercise
-late root/media overrides, important precedence, variable references, unsupported CSS and forced-color
-role violations. A complete-repository fixture runs the production checks before and after plants.
+Sixteen appearances cross light/dark, increased contrast, reduced transparency and forced colors.
+All 2,816 pair measurements must pass. Forced-color probes disable automatic color adjustment
+so a wrong semantic mapping remains observable; separate system-color probes verify the mappings
+against this browser's own system colors. Pressed controls use Highlight/HighlightText, while
+default and hover use ButtonFace/ButtonText. Forced-color measurements describe this emulation,
+not every operating-system high-contrast palette. The report retains the four base palettes and
+704 pairs; every appearance must pass before it is written. The control changes only one value
+in the fixture DOM; it never writes the stylesheet. CI requires exit exactly 1 and the intended
+failing pair, so an unrelated crash cannot satisfy the control.
 
-Hygiene scans repository files, including hidden publication directories. Git metadata, `.temp/`
-scratch and Python bytecode caches are omitted. Binary artwork is omitted from text decoding.
-Only `scripts/hygiene_rules.py` and `scripts/tests/test_ci.py` are exempt from generic-rule scanning:
-they contain generic policy patterns and isolated synthetic violations. No publication directory
-is exempt. Identifier rules still apply inside code examples elsewhere. Russian punctuation rules
-apply to UTF-8 files containing Cyrillic prose, including metadata; Markdown fenced/inline code is
-omitted for this prose-only rule. Backticks in other formats do not create a prose exemption.
-Word hyphens and numeric ranges remain valid.
+Hygiene scans repository files, including hidden publication directories. Git metadata,
+`node_modules/`, `.temp/` and Python bytecode caches are omitted. Binary artwork formats may
+contain non-text bytes. Other source files must be UTF-8 without a BOM or NUL bytes; violations fail
+`publication-encoding`. Malformed JSON, SVG and CSS parse errors fail `publication-decode`.
+CSS follows the pinned parser's CSS error recovery, including EOF termination of strings/comments.
 
-In addition to raw source, hygiene scans publication values after format-specific decoding: Markdown
-entities, inline HTML attributes and link destinations; HTML text/attributes; XML-decoded SVG text,
-titles, descriptions and attributes; parsed JSON keys/string values; and CSS escaped identifiers,
-strings, generated content and URLs. Embedded style attributes/elements use CSS decoding. URL targets
-also receive percent decoding. Decoding follows each consumer context once, without recursively
-unescaping entity-looking text in JSON or CSS strings. Malformed supported JSON, SVG or CSS lexical
-input fails with `publication-decode`. Both generic rules and external literals apply to decoded values;
-decoded diagnostics use line 0 because their positions can span source lines.
+Only `scripts/hygiene_rules.py` and `scripts/tests/test_ci.py` are exempt from generic-rule scanning;
+they contain generic policies and synthetic plants. External literals still apply to both.
+Russian punctuation checks exclude rendered Markdown code blocks and spans; identifier checks
+retain both raw code examples and rendered text. Other formats have no Markdown code exemption.
+Word hyphens, numeric ranges and Markdown list markers remain valid.
+
+Markdown uses pinned markdown-it CommonMark with tables and strikethrough enabled. Its rendered
+HTML, rather than a handwritten prose filter, supplies text, attributes, links and anchors.
+parse5 supplies the HTML tree; github-slugger assigns IDs to rendered Markdown headings, including
+inline-code text. Fenced, inline, indented and nested code examples create no live HTML IDs or
+links. Undefined reference syntax remains literal text, as in CommonMark. Real reference links,
+images and HTML links are resolved; local targets cannot escape the repository. External targets
+are not fetched. This establishes local resolution, not external reachability.
+
+The same Node publication engine is shared by hygiene and link checks. HTML text/attributes,
+XML-parsed SVG values, JSON keys/string values and CSS Tree's parsed strings/identifiers/URLs
+receive the same generic and external rules as raw source. Adjacent CSS generated-content
+strings are joined. URL values receive percent decoding once; entity-looking CSS/JSON strings
+are not recursively HTML-decoded. The URL decoder is copied from the site's publication module
+at the provenance commit recorded in `scripts/css-publication.mjs`; HTML parsing and heading slugs
+use the same dependency versions as the site. No reusable package or external service is required.
+
 The exact public skill invocation for `swarma-platform-design-system` is permitted only in
-`agents/openai.yaml` and `locales/metadata.json`: its command prefix otherwise resembles an event
-token. This exception covers only that complete invocation, never a longer token or another ID.
-
-Markdown links are resolved relative to their source file; leading-slash destinations resolve
-from the repository root. Percent escapes, balanced parentheses, angle destinations, reference
-links, HTML href/src attributes, heading fragments and explicit HTML IDs are supported. Links may not escape the repository.
-Fenced/inline code examples supply neither links nor HTML IDs. Inline-code text in real Markdown
-headings still contributes to heading slugs; literal HTML/SVG target IDs are read as markup.
-External URLs are not fetched. This check establishes
-local resolution, not external reachability. No deployment workflow is included.
+`agents/openai.yaml` and `locales/metadata.json`, where its command prefix resembles an event token.
+That exception covers only the complete invocation. Diagnostics use source line 0 for decoded
+values and rendered links. All CLI output, including unexpected exceptions, parser diagnostics
+and split writes, crosses one redaction boundary. Filesystem failures and publication symlinks reject safely without
+exception payloads or tracebacks. There is no deployment workflow.
 
 ## External identifier tokens
 
 Tracked policies and control fixtures contain generic identifier shapes and synthetic names only.
 Generic rules cover Matrix IDs, board IDs, local paths, session URLs and workplace-name shapes.
-Repository links and email addresses require exact entries in `config/public-repos.json`, initially empty.
+Repository links and email addresses require exact entries in `config/public-repos.json`.
 Real internal names come from `IDENT_DENY_TOKENS` (comma-separated literals), or the untracked file
 `$HOME/.config/swarma-site/deny-tokens.txt` (one literal per line; commas are also accepted).
 A nonempty environment list takes precedence over the file. Matches are case-insensitive literal substrings.

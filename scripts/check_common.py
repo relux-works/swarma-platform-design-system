@@ -1,31 +1,27 @@
-"""Shared repository traversal and prose handling for dependency-free checks."""
+"""Shared fail-closed traversal for publication checks."""
 
+import os
 from pathlib import Path
-import re
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRATCH = {".git", ".temp", "__pycache__"}
+SCRATCH = {".git", ".temp", "__pycache__", "node_modules"}
 
 
 def files(root):
-    return sorted(p for p in root.rglob("*")
-                  if p.is_file() and not any(part in SCRATCH for part in p.relative_to(root).parts))
+    if not root.is_dir():
+        raise ValueError("missing publication root")
 
+    def failed(error):
+        raise error
 
-def prose(text, inline=True):
-    """Omit fenced and inline code while retaining line positions for diagnostics."""
-    lines = []
-    fence = None
-    for line in text.splitlines(keepends=True):
-        marker = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
-        if fence:
-            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence):
-                fence = None
-            lines.append("\n" if line.endswith("\n") else "")
-        elif marker:
-            fence = marker[1]
-            lines.append("\n" if line.endswith("\n") else "")
-        else:
-            lines.append(line)
-    text = "".join(lines)
-    return re.sub(r"(`+)(.*?)\1", lambda m: re.sub(r"[^\n]", " ", m[0]), text, flags=re.S) if inline else text
+    found = []
+    for directory, names, entries in os.walk(root, onerror=failed, followlinks=False):
+        names[:] = sorted(name for name in names if name not in SCRATCH)
+        if any((Path(directory) / name).is_symlink() for name in names):
+            raise ValueError("unsupported directory symlink")
+        for name in entries:
+            path = Path(directory) / name
+            if path.is_symlink():
+                raise ValueError("unsupported publication symlink")
+            found.append(path)
+    return sorted(found)
