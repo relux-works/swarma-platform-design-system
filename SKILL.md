@@ -89,7 +89,7 @@ mark: use the approved files.
   colours. Dark mode is tuned separately, not inverted.
 - Use the role layer only with the meanings of the book's diagrams and the status layer only with
   the book's five status words, always with text. See [color-and-themes.md](references/color-and-themes.md).
-- After any token change, run `python3 scripts/check_contrast.py assets/tokens.css`; it must exit 0,
+- After any token change, run `node scripts/run.mjs python3 scripts/check_contrast.py assets/tokens.css`; it must exit 0,
   and the `--control` run must exit 1. Regenerate
   [contrast-report.md](references/contrast-report.md) with `--report`.
 

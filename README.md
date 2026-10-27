@@ -23,15 +23,16 @@ CI installs the browser version selected by the locked Playwright dependency.
 
 | Tool / command | Purpose | Output |
 | --- | --- | --- |
+| `node scripts/run.mjs <command> [arguments...]` | Start the trusted output supervisor before checker code | Complete stdout/stderr are redacted before release; child exit code is retained |
 | `npm ci` | Install the locked CommonMark, HTML, YAML, CSS and browser tooling | `node_modules/` |
 | `npx playwright install chromium` | Install the Playwright Chromium binary | The configured browser cache |
-| `python3 scripts/check_contrast.py` | Measure computed token pairs and forced-color roles in Chromium | Console; exit 0 only when every target passes |
-| `python3 scripts/check_contrast.py --control` | Inject a known failing value in the browser fixture | Console; expected exit 1 with the intended light text-faint failure |
-| `python3 scripts/check_contrast.py assets/tokens.css --report references/contrast-report.md` | Recompute the four base-palette report after all browser appearances pass | Markdown report and console |
-| `python3 -m unittest discover -s scripts/tests -v` | Run clean and isolated negative controls | Console; temporary fixtures under `.temp/` are removed |
-| `python3 scripts/check_hygiene.py` | Check raw source, filenames and consumer-decoded publication values | Redacted rule diagnostics; nonzero on failure |
-| `python3 scripts/check_ci_tokens.py` | Require a usable explicit CI secret without local fallback | Redacted diagnostics; nonzero on invalid configuration |
-| `python3 scripts/check_links.py` | Resolve local links and anchors from rendered Markdown | Redacted diagnostics; no external requests |
+| `node scripts/run.mjs python3 scripts/check_contrast.py` | Measure computed token pairs and forced-color roles in Chromium | Console; exit 0 only when every target passes |
+| `node scripts/run.mjs python3 scripts/check_contrast.py --control` | Inject a known failing value in the browser fixture | Console; expected exit 1 with the intended light text-faint failure |
+| `node scripts/run.mjs python3 scripts/check_contrast.py assets/tokens.css --report references/contrast-report.md` | Recompute the four base-palette report after all browser appearances pass | Markdown report and console |
+| `node scripts/run.mjs python3 -m unittest discover -s scripts/tests -v` | Run clean and isolated negative controls | Console; temporary fixtures under `.temp/` are removed |
+| `node scripts/run.mjs python3 scripts/check_hygiene.py` | Check raw source, filenames and consumer-decoded publication values | Redacted rule diagnostics; nonzero on failure |
+| `node scripts/run.mjs python3 scripts/check_ci_tokens.py` | Require a usable explicit CI secret without local fallback | Redacted diagnostics; nonzero on invalid configuration |
+| `node scripts/run.mjs python3 scripts/check_links.py` | Resolve local links and anchors from rendered Markdown | Redacted diagnostics; no external requests |
 | GitHub Actions, `.github/workflows/ci.yml` | Run the same checks on pull requests and main pushes | Job logs; contrast-control log under `.temp/` |
 
 Contrast loads the shipped stylesheet unchanged through a local file URL in a fresh Chromium
@@ -70,6 +71,8 @@ Word hyphens, numeric ranges and Markdown list markers remain valid.
 Markdown uses pinned markdown-it CommonMark with tables and strikethrough enabled. Its rendered
 HTML supplies attributes, links and anchors. Hygiene loads that HTML into Chromium for
 `innerText`, decoded text nodes and full accessibility-tree names, descriptions and values,
+across light and dark schemes at 1280px and 390px widths, each with forced colors inactive and active.
+Text, decoded attributes, computed pseudo-element content and full accessibility values are collected in all eight states,
 including hidden `aria-labelledby` and `aria-describedby` references. Prose punctuation
 excludes code/pre elements in that same browser DOM. A synthetic origin preserves each document's
 location, base URLs, linked stylesheets, CSS imports and local images/fonts. Requests are fulfilled
@@ -94,8 +97,14 @@ use the same dependency versions as the site. No reusable package or external se
 The exact public skill invocation for `swarma-platform-design-system` is permitted only in
 `agents/openai.yaml` and `locales/metadata.json`, where its command prefix resembles an event token.
 That exception covers only the complete invocation. Diagnostics use source line 0 for decoded
-values and rendered links. All CLI output, including unexpected exceptions, parser diagnostics
-and split writes, crosses one redaction boundary. Filesystem failures and publication symlinks reject safely without
+values and rendered links. Use the supervised commands above for every Python or Node project entry point. The trusted Node bootstrap starts
+before Python/Node parses the child entry point or imports its modules. All child stdout/stderr, including syntax/import
+failures and split writes, is buffered until exit and redacted before release. Signals are forwarded and child exit codes
+are retained. A bootstrap policy failure emits only a fixed diagnostic. The in-process Python handler remains secondary
+protection. Internal Node engines use captured structured-data pipes inside the supervised Python process; their raw
+stderr is never forwarded, and their policy input is not rewritten. Direct unsupervised interpreter commands are outside
+this diagnostic boundary. Publication values from different render states remain separate; they are never joined into
+one token. Filesystem failures and publication symlinks reject safely without
 exception payloads or tracebacks. There is no deployment workflow.
 
 ## External identifier tokens
@@ -122,7 +131,7 @@ from generic rules. Diagnostics report rule names and redact matching filenames,
 Keep real tokens out of source, fixtures, documentation, command arguments and logs.
 
 Configure the repository secret `IDENT_DENY_TOKENS` before CI; the workflow supplies it only to the repository hygiene step.
-That step runs `python3 scripts/check_ci_tokens.py` before hygiene. The shared guard enforces the same ASCII-only grammar for every entry. Greek letters, invisible characters,
+That step runs `node scripts/run.mjs python3 scripts/check_ci_tokens.py` before hygiene. The shared guard enforces the same ASCII-only grammar for every entry. Greek letters, invisible characters,
 NBSP and uppercase entries reject; the explicit list must be nonempty.
 CI uses only a valid explicit secret and never reads the local fallback file,
 regardless of `IDENT_DENY_TOKENS_OPTIONAL`.
@@ -130,7 +139,7 @@ Locally, missing tokens print a warning, run the generic checks and exit nonzero
 For an explicit generic-only local run, use:
 
 ```sh
-IDENT_DENY_TOKENS_OPTIONAL=1 python3 scripts/check_hygiene.py
+IDENT_DENY_TOKENS_OPTIONAL=1 node scripts/run.mjs python3 scripts/check_hygiene.py
 ```
 
 The unit controls use synthetic tokens and temporary home directories. They test configured and unconfigured

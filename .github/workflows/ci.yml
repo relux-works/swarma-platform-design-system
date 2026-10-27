@@ -22,26 +22,26 @@ jobs:
       - name: Python version
         run: python3 -c 'import sys; print(sys.version.split()[0]); assert sys.version_info[:2] == (3, 14)'
       - name: Contrast
-        run: python3 scripts/check_contrast.py
+        run: node scripts/run.mjs python3 scripts/check_contrast.py
       - name: Contrast negative control
         shell: bash
         run: |
           mkdir -p .temp
           set +e
-          python3 scripts/check_contrast.py --control > .temp/contrast-control.log 2>&1
+          node scripts/run.mjs python3 scripts/check_contrast.py --control > .temp/contrast-control.log 2>&1
           control_status=$?
           set -e
           cat .temp/contrast-control.log
           test "$control_status" -eq 1
           grep -Eq '^FAIL light[[:space:]]+text-faint on bg[[:space:]]' .temp/contrast-control.log
       - name: Hygiene and link controls
-        run: python3 -m unittest discover -s scripts/tests -v
+        run: node scripts/run.mjs python3 -m unittest discover -s scripts/tests -v
       - name: Repository hygiene
         shell: bash
         env:
           IDENT_DENY_TOKENS: ${{ secrets.IDENT_DENY_TOKENS }}
         run: |
-          python3 scripts/check_ci_tokens.py
-          python3 scripts/check_hygiene.py
+          node scripts/run.mjs python3 scripts/check_ci_tokens.py
+          node scripts/run.mjs python3 scripts/check_hygiene.py
       - name: Markdown links
-        run: python3 scripts/check_links.py
+        run: node scripts/run.mjs python3 scripts/check_links.py

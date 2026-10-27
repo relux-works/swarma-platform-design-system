@@ -273,7 +273,7 @@ The change is complete only when:
 - WCAG 2.2 Level AA exceptions, if any, have an accessible alternative, owner,
   remediation date, and matching public disclosure; the product is not described as
   fully conformant while an exception remains.
-- `python3 scripts/check_contrast.py assets/tokens.css` (or the product's copy of the
+- `node scripts/run.mjs python3 scripts/check_contrast.py assets/tokens.css` (or the product's copy of the
   check against its shipped tokens) exits 0, and the `--control` run exits 1.
 - Semantic interface tokens pass contrast validation and contain no pure black or pure
   white. Approved knockout logo artwork may use the fixed `#FFFFFF` brand token, and book

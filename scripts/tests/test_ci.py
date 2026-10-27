@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
+SUPERVISOR = ["node", str(ROOT / "scripts/run.mjs")]
 
 
 class Controls(unittest.TestCase):
@@ -29,13 +30,110 @@ class Controls(unittest.TestCase):
     def run_check(self, script, rule=None, env=None):
         environment = {**os.environ, "HOME": str(self.root), "CI": "", "IDENT_DENY_TOKENS": "zz-host-alpha",
                        "IDENT_DENY_TOKENS_OPTIONAL": "", **(env or {})}
-        result = subprocess.run([sys.executable, str(ROOT / "scripts" / script), "--root", str(self.root)],
+        result = subprocess.run(SUPERVISOR + [sys.executable, str(ROOT / "scripts" / script), "--root", str(self.root)],
                                 capture_output=True, text=True, timeout=60, env=environment)
         self.assertEqual(result.returncode, 1 if rule else 0, result.stdout + result.stderr)
         if rule:
             self.assertTrue(any(re.search(r": " + re.escape(rule) + r"(?:: |$)", line) for line in (result.stdout + result.stderr).splitlines()), result.stdout + result.stderr)
             print(f"control {script}: {rule}: exit {result.returncode}")
         return result
+
+    # Actual Python/Node syntax and early-import mistakes are redacted before any child project handler can exist.
+    def test_supervisor_bootstrap_errors(self):
+        publication = self.root / "publication"
+        shutil.copytree(ROOT / "scripts", publication / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
+        (publication / "node_modules").symlink_to(ROOT / "node_modules", target_is_directory=True)
+        environment = {**os.environ, "HOME": str(self.root / "home"), "CI": "true", "IDENT_DENY_TOKENS": "zz-review-canary"}
+        supervisor = ["node", str(publication / "scripts/run.mjs")]
+        (publication / "assets").mkdir()
+        shutil.copyfile(ROOT / "assets/tokens.css", publication / "assets/tokens.css")
+        payload = json.dumps({"documents": [], "root": str(publication), "tokens": str(publication / "assets/tokens.css"),
+                              "modes": [], "roles": {}, "pairs": [], "control": False})
+        entries = [(name, [sys.executable, str(publication / "scripts" / name), "--help"])
+                   for name in ["check_hygiene.py", "check_links.py", "check_contrast.py", "check_ci_tokens.py"]]
+        entries += [(name, ["node", str(publication / "scripts" / name)])
+                    for name in ["publication-engine.mjs", "measure-contrast.mjs"]]
+        entries += [(name, [sys.executable, str(publication / "scripts/check_hygiene.py"), "--help"])
+                    for name in ["diagnostics.py", "publication_policy.py"]]
+        entries += [(name, ["node", str(publication / "scripts/publication-engine.mjs")])
+                    for name in ["css-publication.mjs", "rendered-publication.mjs", "diagnostic-policy.mjs"]]
+        for name, command in entries:
+            path = publication / "scripts" / name
+            original = path.read_text()
+            clean = subprocess.run(supervisor + command, cwd=publication, env=environment, input=payload,
+                                   capture_output=True, text=True, timeout=60)
+            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+            errors = ['probe = "zz-review-canary\n', "__import__('zz-review-canary')\n"] if name.endswith('.py') else [
+                'const probe = "zz-review-canary\n', "import 'zz-review-canary';\n"]
+            for index, plant in enumerate(errors):
+                with self.subTest(module=name, plant=index):
+                    try:
+                        path.write_text(original + plant if index == 0 else plant + original)
+                        result = subprocess.run(supervisor + command, cwd=publication, env=environment, input=payload,
+                                                capture_output=True, text=True, timeout=60)
+                        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                        self.assertNotIn("zz-review-canary", (result.stdout + result.stderr).lower())
+                        self.assertIn('diagnostic-boundary' if name == 'diagnostic-policy.mjs' else '[redacted]', result.stdout + result.stderr)
+                    finally:
+                        path.write_text(original)
+
+    # Complete streams preserve UTF-8, redact split writes/lines, pass stdin/arguments and retain child outcomes.
+    def test_supervisor_streams_and_exit_codes(self):
+        environment = {**os.environ, "HOME": str(self.root), "CI": "true", "IDENT_DENY_TOKENS": "zz-review-canary"}
+        source = ("import os,sys; os.write(1, bytes([0xce])); os.write(1, bytes([0xa3])); "
+                  "print(' zz-review-'); print('canary'); print('zz-review-',end='',file=sys.stderr); "
+                  "print('canary',file=sys.stderr); sys.exit(7)")
+        result = subprocess.run(SUPERVISOR + [sys.executable, '-c', source], env=environment, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 7)
+        self.assertEqual(result.stdout, 'Σ [redacted]\n')
+        self.assertEqual(result.stderr, '[redacted]\n')
+        result = subprocess.run(SUPERVISOR + [sys.executable, '-c', 'import sys; print(sys.stdin.read()); print(sys.argv[1])', 'literal argument'],
+                                env=environment, input='zz-review-canary', capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '[redacted]\nliteral argument\n')
+        result = subprocess.run(SUPERVISOR + [sys.executable, '-c', 'import os,signal; os.kill(os.getpid(),signal.SIGTERM)'],
+                                env=environment, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 143)
+        result = subprocess.run(SUPERVISOR + ['zz-review-canary-missing-command'], env=environment, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, 'diagnostic-boundary: command unavailable\n')
+
+    # Linked and inline media-dependent generated names reject in dark, narrow and forced-color states, with public neighbors.
+    def test_conditional_publication_names(self):
+        environment = {"IDENT_DENY_TOKENS": "zzreviewomega"}
+        name = '<button data-prefix="zz review" data-suffix="omega"></button>'
+        rule = 'button::before {content:attr(data-prefix) " " attr(data-suffix)}'
+        for media in ['(prefers-color-scheme:dark)', '(max-width:640px)', '(forced-colors:active)']:
+            for linked in [False, True]:
+                with self.subTest(media=media, linked=linked):
+                    style = '@media ' + media + ' {' + rule + '}'
+                    self.put('conditional.css', style)
+                    head = '<link rel="stylesheet" href="conditional.css">' if linked else '<style>' + style + '</style>'
+                    self.put('probe.html', head + name.replace('omega', 'public'))
+                    self.run_check('check_hygiene.py', env=environment)
+                    self.put('probe.html', head + name)
+                    self.run_check('check_hygiene.py', 'deny-token', environment)
+                    # A distinct policy leaves the bridge's structured witness intact for independent assertions.
+                    payload = {"documents": [{"suffix": ".html", "source": head + name, "path": str(self.root / 'probe.html')}],
+                               "rendered": True, "root": str(self.root)}
+                    result = subprocess.run(SUPERVISOR + ['node', str(ROOT / 'scripts/publication-engine.mjs')],
+                                            input=json.dumps(payload), env={**os.environ, 'CI':'true', 'IDENT_DENY_TOKENS':'zz-other-policy'},
+                                            capture_output=True, text=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    states = json.loads(result.stdout)[0]['states']
+                    self.assertEqual(len(states), 8)
+                    self.assertEqual({(state['mode']['scheme'], state['mode']['width'], state['mode']['forced']) for state in states},
+                                     {(scheme, width, forced) for scheme in ['light','dark'] for width in [1280,390] for forced in ['none','active']})
+                    for state in states:
+                        active = (state['mode']['scheme'] == 'dark' if 'scheme' in media else
+                                  state['mode']['width'] == 390 if 'width' in media else state['mode']['forced'] == 'active')
+                        self.assertEqual(any(value == 'zz review omega' for value, _ in state['accessible']), active)
+                        self.assertEqual(bool(state['computed']), active)
+        # Independent state values must not accidentally concatenate into a token across theme transitions.
+        self.put('conditional.css', '@media(prefers-color-scheme:light){button::before{content:attr(data-prefix)}}'
+                 '@media(prefers-color-scheme:dark){button::before{content:attr(data-suffix)}}')
+        self.put('probe.html', '<link rel="stylesheet" href="conditional.css">' + name)
+        self.run_check('check_hygiene.py', env=environment)
 
     # Ordinary reflow and invisible separators cannot conceal a literal; paragraph and code boundaries stay separate.
     def test_rendered_whitespace_policy(self):
@@ -118,14 +216,14 @@ class Controls(unittest.TestCase):
         source = ("import sys; sys.path.insert(0, " + repr(str(ROOT / 'scripts')) + "); "
                   "from diagnostics import run_cli; "
                   "sys.exit(run_cli(lambda: print('zz reviewer\\n\\tomega') or 0, 'check-error'))")
-        result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True,
+        result = subprocess.run(SUPERVISOR + [sys.executable, '-c', source], capture_output=True, text=True,
                                 env={**os.environ, 'IDENT_DENY_TOKENS':token})
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout.strip(), "[redacted]")
         source = ("import sys; sys.path.insert(0, " + repr(str(ROOT / 'scripts')) + "); "
                   "from diagnostics import run_cli; "
                   "sys.exit(run_cli(lambda: print('ZZ STRASSE') or 0, 'check-error'))")
-        result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True,
+        result = subprocess.run(SUPERVISOR + [sys.executable, '-c', source], capture_output=True, text=True,
                                 env={**os.environ, 'IDENT_DENY_TOKENS':'zzstrasse'})
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout.strip(), "[redacted]")
@@ -175,7 +273,7 @@ class Controls(unittest.TestCase):
             policy.write_text(token)
             for script in ["check_hygiene.py", "check_links.py", "check_contrast.py"]:
                 result = self.run_check(script, "identifier-deny-tokens", {"HOME":str(home), "IDENT_DENY_TOKENS":"", "CI":""})
-                self.assertEqual(result.stderr.strip(), "configuration:0: identifier-deny-tokens: cannot load redaction policy")
+                self.assertEqual(result.stderr.strip(), "configuration:0: identifier-deny-tokens")
                 self.assertNotIn("ΟΣ", result.stdout + result.stderr)
             # A usable explicit CI policy must not read even this invalid ambient policy file.
             self.run_check("check_hygiene.py", env={"HOME":str(home), "IDENT_DENY_TOKENS":"zz-other-policy", "CI":"true"})
@@ -419,7 +517,7 @@ class Controls(unittest.TestCase):
                            ('[Escape](../outside.md)', 'markdown-link')]:
             with self.subTest(text=text):
                 self.put("page.md", text)
-                result = subprocess.run([sys.executable, str(ROOT / "scripts/check_links.py"), "--root", str(self.root)],
+                result = subprocess.run(SUPERVISOR + [sys.executable, str(ROOT / "scripts/check_links.py"), "--root", str(self.root)],
                                         capture_output=True, text=True, timeout=60)
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn(": " + rule + ": ", result.stdout)
@@ -583,7 +681,7 @@ try {
   console.log('CommonMark browser witnesses and clean controls passed');
 } finally { await browser.close(); }
 """
-        result = subprocess.run(['node', '--input-type=module', '-e', source], cwd=ROOT,
+        result = subprocess.run(SUPERVISOR + ['node', '--input-type=module', '-e', source], cwd=ROOT,
                                 env={**os.environ, 'TMPDIR': str(self.root)}, capture_output=True, text=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('browser witnesses and clean controls passed', result.stdout)
@@ -614,7 +712,7 @@ try {
                           "def broken():\n print('zz-host-', end='')\n print('alpha')\n"
                           " raise OSError('zz-host-alpha.txt')\n"
                           "sys.exit(check.run_cli(broken, " + repr(rule) + "))\n")
-                result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True,
+                result = subprocess.run(SUPERVISOR + [sys.executable, '-c', source], capture_output=True, text=True,
                                         env={**os.environ, 'IDENT_DENY_TOKENS': 'zz-host-alpha'})
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn(rule, result.stderr)
@@ -631,7 +729,7 @@ try {
                 source = ("import sys; sys.path.insert(0, " + repr(str(ROOT / 'scripts')) + "); "
                           "import " + module + " as check; "
                           "sys.exit(check.run_cli(lambda: print('zz-host-alpha.txt') or 0, 'check-error'))")
-                result = subprocess.run([sys.executable, '-c', source], capture_output=True, text=True,
+                result = subprocess.run(SUPERVISOR + [sys.executable, '-c', source], capture_output=True, text=True,
                                         env={**os.environ, 'HOME':str(home), 'IDENT_DENY_TOKENS':'', 'CI':''})
                 self.assertEqual(result.returncode, 1)
                 self.assertIn('identifier-deny-tokens', result.stdout + result.stderr)
@@ -680,7 +778,7 @@ try {
 
     def contrast(self, css, diagnostic=None, report=False):
         self.put("tokens.css", css)
-        command = [sys.executable, str(ROOT / "scripts/check_contrast.py"), str(self.root / "tokens.css")]
+        command = SUPERVISOR + [sys.executable, str(ROOT / "scripts/check_contrast.py"), str(self.root / "tokens.css")]
         if report:
             command += ["--report", str(self.root / "report.md")]
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
@@ -751,7 +849,7 @@ try {
         environment = {**os.environ, "IDENT_DENY_TOKENS": "zz" + "-integration-alpha", "CI": "true"}
 
         def invoke(script, rule=None):
-            result = subprocess.run([sys.executable, str(publication / "scripts" / script)], cwd=publication,
+            result = subprocess.run(["node", str(publication / "scripts/run.mjs"), sys.executable, str(publication / "scripts" / script)], cwd=publication,
                                     env=environment, capture_output=True, text=True, timeout=90)
             self.assertEqual(result.returncode, 1 if rule else 0, result.stdout + result.stderr)
             if rule:
@@ -775,6 +873,20 @@ try {
         invoke("check_links.py", "markdown-anchor")
         (publication / "references/target.md").write_text('    <div id="ghost"></div>\n')
         invoke("check_links.py", "markdown-anchor")
+        (publication / "references/encoded.md").unlink()
+        (publication / "references/target.md").unlink()
+        media_token = "zz" + "integrationmedia"
+        environment["IDENT_DENY_TOKENS"] = media_token
+        body = '<button data-prefix="zz integration" data-suffix="media"></button>'
+        rule = 'button::before {content:attr(data-prefix) " " attr(data-suffix)}'
+        for media in ['(prefers-color-scheme:dark)', '(max-width:640px)', '(forced-colors:active)']:
+            (publication / "references/conditional.css").write_text('@media' + media + '{' + rule + '}')
+            (publication / "references/conditional.html").write_text('<link rel="stylesheet" href="conditional.css">' + body.replace('"media"', '"public"'))
+            invoke("check_hygiene.py")
+            (publication / "references/conditional.html").write_text('<link rel="stylesheet" href="conditional.css">' + body)
+            invoke("check_hygiene.py", "deny-token")
+        (publication / "references/conditional.css").unlink()
+        (publication / "references/conditional.html").unlink()
         original = (publication / "assets/tokens.css").read_text()
         with (publication / "assets/tokens.css").open("a") as file:
             file.write(':root {--color-text:#ffffff;--color-bg:#ffffff;}')

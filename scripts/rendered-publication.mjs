@@ -3,6 +3,7 @@ import { mkdir, readFile, realpath } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { cssValues } from './css-publication.mjs';
 
 const origin = 'https://publication.invalid';
 const types = { '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
@@ -47,40 +48,55 @@ export async function renderDocuments(documents, sources, publicationRoot) {
     const page = await context.newPage();
     const session = await context.newCDPSession(page);
     await session.send('Accessibility.enable');
+    const modes = ['light', 'dark'].flatMap(scheme => [1280, 390].flatMap(width =>
+      ['none', 'active'].map(forced => ({ scheme, width, forced }))));
     for (const [index, document] of documents.entries()) {
       if (document.error || !document.html) continue;
       const location = resolve(sources[index].path);
       if (!contained(root, location)) throw new Error('document boundary');
       currentURL = origin + '/' + relative(root, location).split('/').map(encodeURIComponent).join('/');
       currentDocument = document;
-      resourceFailed = false;
-      await page.goto(currentURL, { waitUntil: 'load', timeout: 10_000 });
-      await page.evaluate(() => document.fonts.ready);
-      if (resourceFailed) {
-        document.error = 'publication-decode';
-        continue;
-      }
-      document.text = await page.locator('body').innerText();
-      // Retain individually decoded source text, including hidden values, without reconstructing visible prose.
-      document.decoded = await page.evaluate(() => {
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), values = [];
-        for (let node; (node = walker.nextNode());) {
-          if (node.parentElement?.closest('style, script')) continue;
-          values.push([node.textContent, !node.parentElement?.closest('code, pre')]);
+      document.states = [];
+      for (const mode of modes) {
+        await page.setViewportSize({ width: mode.width, height: 800 });
+        const features = [{ name: 'prefers-color-scheme', value: mode.scheme }, { name: 'forced-colors', value: mode.forced }];
+        await session.send('Emulation.setEmulatedMedia', { media: 'screen', features });
+        resourceFailed = false;
+        // A fresh DOM per mode prevents prose code removal from changing the next state's content.
+        await page.goto(currentURL, { waitUntil: 'load', timeout: 10_000 });
+        await page.evaluate(() => document.fonts.ready);
+        if (resourceFailed) {
+          document.error = 'publication-decode';
+          break;
         }
-        return values;
-      });
-      // The full tree includes controls that "interesting only" snapshots can omit, and resolves hidden IDREFs.
-      const { nodes } = await session.send('Accessibility.getFullAXTree');
-      // Static text is already covered by DOM prose with its code exemption. All AX values still receive
-      // identifier policy; semantic control names/descriptions also receive prose punctuation policy.
-      document.accessible = nodes.flatMap(node => [node.name?.value, node.description?.value, node.value?.value]
-        .filter(value => typeof value === 'string')
-        .map(value => [value, !['StaticText', 'InlineTextBox', 'code'].includes(node.role?.value)]));
-      document.prose = await page.evaluate(() => {
-        document.querySelectorAll('pre, code').forEach(node => node.remove());
-        return document.body.innerText;
-      });
+        if (!await page.evaluate(features => features.every(({ name, value }) => matchMedia(`(${name}: ${value})`).matches), features)) {
+          throw new Error('media emulation unavailable');
+        }
+        const state = { mode, text: await page.locator('body').innerText() };
+        // Retain individually decoded source text, including hidden values, without reconstructing visible prose.
+        state.decoded = await page.evaluate(() => {
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), values = [];
+          for (let node; (node = walker.nextNode());) {
+            if (node.parentElement?.closest('style, script')) continue;
+            values.push([node.textContent, !node.parentElement?.closest('code, pre')]);
+          }
+          return values;
+        });
+        const contents = await page.evaluate(() => [...document.querySelectorAll('*')].flatMap(node =>
+          ['::before', '::after', '::marker'].map(pseudo => getComputedStyle(node, pseudo).content)
+            .filter(value => value && !['none', 'normal'].includes(value))));
+        state.computed = contents.flatMap(content => cssValues(content, 'value'));
+        // The full AX tree resolves generated control names and hidden IDREFs in the current media state.
+        const { nodes } = await session.send('Accessibility.getFullAXTree');
+        state.accessible = nodes.flatMap(node => [node.name?.value, node.description?.value, node.value?.value]
+          .filter(value => typeof value === 'string')
+          .map(value => [value, !['StaticText', 'InlineTextBox', 'code'].includes(node.role?.value)]));
+        state.prose = await page.evaluate(() => {
+          document.querySelectorAll('pre, code').forEach(node => node.remove());
+          return document.body.innerText;
+        });
+        document.states.push(state);
+      }
     }
     return documents;
   } finally {

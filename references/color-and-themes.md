@@ -178,9 +178,9 @@ Inherited targets:
 Evidence is recomputed from the token file, not copied by hand:
 
 ```sh
-python3 scripts/check_contrast.py assets/tokens.css
-python3 scripts/check_contrast.py assets/tokens.css --report references/contrast-report.md
-python3 scripts/check_contrast.py assets/tokens.css --control
+node scripts/run.mjs python3 scripts/check_contrast.py assets/tokens.css
+node scripts/run.mjs python3 scripts/check_contrast.py assets/tokens.css --report references/contrast-report.md
+node scripts/run.mjs python3 scripts/check_contrast.py assets/tokens.css --control
 ```
 
 The first command measures every declared pair with Chromium in all four palettes, with and without

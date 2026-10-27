@@ -70,14 +70,19 @@ def check(root):
             if info.get("error"):
                 errors.append(f"{label}:0: publication-decode")
             else:
-                views.append((info["text"], info["prose"], 0))
                 views.extend((value, value, 0) for value in info["values"])
-                views.extend((value, value if prose else "", 0) for value, prose in info.get("decoded", []) + info.get("accessible", []))
+                for state in info.get("states", [info]):
+                    views.append((state["text"], state["prose"], 0))
+                    views.extend((value, value if prose else "", 0) for value, prose in state.get("decoded", []) + state.get("accessible", []))
+                    views.extend((value, value, 0) for value in state.get("computed", []))
         elif path.suffix.lower() == ".json":
             try:
                 views.extend((value, value, 0) for value in strings(json.loads(text)))
             except ValueError:
                 errors.append(f"{label}:0: publication-decode")
+        # Identical observations have the same rules and location within this document.
+        # Deduplicate complete views, preserving prose flags and state boundaries rather than joining states.
+        views = list(dict.fromkeys(views))
         russian = any(RUSSIAN.search(body) for _, body, _ in views)
         for value, body, start in views:
             # External literals are forbidden even in the exempt policy and control sources.
