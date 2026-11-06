@@ -15,6 +15,12 @@ jobs:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.temp/playwright-browsers
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
       - name: Node version
         run: node -e "if (Number(process.versions.node.split('.')[0]) !== 22) process.exit(1); console.log(process.version)"
       - run: npm ci
