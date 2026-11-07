@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SUPERVISOR = ["node", str(ROOT / "scripts/run.mjs")]
@@ -841,8 +842,56 @@ try {
         self.contrast(css + 'body {--color-text:#ffffff;}', r"FAIL light")
         self.contrast(css + '@supports (display:grid) {:root {--color-text:#ffffff;}}', r"FAIL light")
 
-    # Later render batches reject media-dependent denied names and missing resources, with clean controls.
+    # The production decoder bounds rendered calls, preserves ordered results, and rejects late failures.
     def test_rendered_batch_boundaries(self):
+        with patch.object(sys, "path", [str(ROOT / "scripts"), *sys.path]):
+            import publication_values as decoder
+
+        records = [(self.root / f"page-{index}.html", f"Public text {index}") for index in range(17)]
+
+        def engine(command, **options):
+            batch = json.loads(options["input"])["documents"]
+            return subprocess.CompletedProcess(command, 0, json.dumps([
+                {"source": item["source"]} for item in batch]), "")
+
+        for rendered, count, sizes in [(True, 0, []), (True, 8, [8]), (True, 9, [8, 1]),
+                                       (True, 17, [8, 8, 1]), (False, 17, [17])]:
+            with self.subTest(rendered=rendered, count=count):
+                with patch.object(decoder.subprocess, "run", side_effect=engine) as run:
+                    result = decoder.documents(records[:count], rendered=rendered, root=self.root)
+                payloads = [json.loads(call.kwargs["input"]) for call in run.call_args_list]
+                self.assertEqual([len(payload["documents"]) for payload in payloads], sizes)
+                self.assertEqual([item["path"] for payload in payloads for item in payload["documents"]],
+                                 [str(path.resolve()) for path, _ in records[:count]])
+                self.assertEqual(list(result.items()), [(path, {"source": source}) for path, source in records[:count]])
+                for call in run.call_args_list:
+                    self.assertEqual(call.kwargs["timeout"], 60)
+                    self.assertNotIn("IDENT_DENY_TOKENS", call.kwargs["env"])
+
+        # A successful first batch cannot turn a later timeout or engine rejection into partial success.
+        for failure in ["timeout", "nonzero"]:
+            with self.subTest(failure=failure):
+                calls = []
+
+                def fail_late(command, **options):
+                    calls.append(len(json.loads(options["input"])["documents"]))
+                    if len(calls) == 2:
+                        if failure == "timeout":
+                            raise subprocess.TimeoutExpired(command, options["timeout"])
+                        return subprocess.CompletedProcess(command, 1, "", "opaque child failure")
+                    return engine(command, **options)
+
+                with patch.object(decoder.subprocess, "run", side_effect=fail_late):
+                    if failure == "timeout":
+                        with self.assertRaises(subprocess.TimeoutExpired) as error:
+                            decoder.documents(records[:9], rendered=True, root=self.root)
+                        self.assertEqual(error.exception.timeout, 60)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "^publication engine failed$"):
+                            decoder.documents(records[:9], rendered=True, root=self.root)
+                self.assertEqual(calls, [8, 1])
+
+        # Real browser controls also reject media-dependent denied names and missing resources in later batches.
         for index in range(9):
             self.put(f"page-{index}.html", "<p>Public text</p>")
         environment = {"IDENT_DENY_TOKENS": "zzreviewomega"}

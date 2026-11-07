@@ -22,6 +22,9 @@ be selected with `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`; record its version in va
 CI installs the browser version selected by the locked Playwright dependency and its system dependencies
 with `npx playwright install --with-deps chromium`.
 
+Fork pull requests skip the CI job because they do not receive repository secrets.
+They must be treated as untested at merge review.
+
 | Tool / command | Purpose | Output |
 | --- | --- | --- |
 | `node scripts/run.mjs <command> [arguments...]` | Start the trusted output supervisor before checker code | Complete stdout/stderr are redacted before release; child exit code is retained |
@@ -34,7 +37,7 @@ with `npx playwright install --with-deps chromium`.
 | `node scripts/run.mjs python3 scripts/check_hygiene.py` | Check raw source, filenames and consumer-decoded publication values | Redacted rule diagnostics; nonzero on failure |
 | `node scripts/run.mjs python3 scripts/check_ci_tokens.py` | Require a usable explicit CI secret without local fallback | Redacted diagnostics; nonzero on invalid configuration |
 | `node scripts/run.mjs python3 scripts/check_links.py` | Resolve local links and anchors from rendered Markdown | Redacted diagnostics; no external requests |
-| GitHub Actions, `.github/workflows/ci.yml` | Run the same checks on pull requests and main pushes | Job logs; contrast-control log under `.temp/` |
+| GitHub Actions, `.github/workflows/ci.yml` | Run the same checks on same-repository pull requests and main pushes | Job logs; contrast-control log under `.temp/` |
 
 Contrast loads the shipped stylesheet unchanged through a local file URL in a fresh Chromium
 fixture. It renders one element per declared pair, reads foreground/background colors with
