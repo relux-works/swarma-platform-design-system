@@ -8,7 +8,7 @@ Start with [SKILL.md](SKILL.md) and its resource map. The design provenance is r
 
 The checks use Node 22.23.4 or newer, Python 3.12 or newer and Chromium through Playwright.
 Node dependencies are exact versions in `package.json` and `package-lock.json`.
-CI uses Node 22 and Python 3.14 already on PATH on self-hosted Linux x64 runners.
+CI installs Node 22 and Python 3.14 with setup actions on self-hosted `relux-generic` Linux x64 runners.
 From the repository root, install the locked dependencies and browser:
 
 ```sh
@@ -72,6 +72,8 @@ Markdown uses pinned markdown-it CommonMark with tables and strikethrough enable
 HTML supplies attributes, links and anchors. Hygiene loads that HTML into Chromium for
 `innerText`, decoded text nodes and full accessibility-tree names, descriptions and values,
 across light and dark schemes at 1280px and 390px widths, each with forced colors inactive and active.
+Rendered documents run in batches of at most eight within the existing browser and subprocess deadlines;
+every document and all eight states remain required, and a failed batch rejects the scan.
 Text, decoded attributes, computed pseudo-element content and full accessibility values are collected in all eight states,
 including hidden `aria-labelledby` and `aria-describedby` references. Prose punctuation
 excludes code/pre elements in that same browser DOM. A synthetic origin preserves each document's

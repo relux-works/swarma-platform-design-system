@@ -30,16 +30,20 @@ def documents(records, *, rendered=False, root=None):
         locations.append(path)
     if payload:
         environment = {key: value for key, value in os.environ.items() if key != "IDENT_DENY_TOKENS"}
-        result = subprocess.run(["node", str(ENGINE)], input=json.dumps({"documents": payload, "rendered": rendered,
-                                "root": str(root.resolve()) if root else None}), text=True,
-                                capture_output=True, timeout=60, env=environment)
-        # Never forward child stderr, JSON errors or exception payloads into a diagnostic.
-        if result.returncode:
-            raise ValueError("publication engine failed")
-        values = json.loads(result.stdout)
-        if not isinstance(values, list) or len(values) != len(locations):
-            raise ValueError("invalid publication result")
-        output.update(zip(locations, values))
+        # Bound browser work so repository size cannot exhaust one engine deadline.
+        batch_size = 8 if rendered else len(payload)
+        for start in range(0, len(payload), batch_size):
+            batch = payload[start:start + batch_size]
+            result = subprocess.run(["node", str(ENGINE)], input=json.dumps({"documents": batch, "rendered": rendered,
+                                    "root": str(root.resolve()) if root else None}), text=True,
+                                    capture_output=True, timeout=60, env=environment)
+            # Never forward child stderr, JSON errors or exception payloads into a diagnostic.
+            if result.returncode:
+                raise ValueError("publication engine failed")
+            values = json.loads(result.stdout)
+            if not isinstance(values, list) or len(values) != len(batch):
+                raise ValueError("invalid publication result")
+            output.update(zip(locations[start:start + batch_size], values))
     return output
 
 

@@ -841,6 +841,23 @@ try {
         self.contrast(css + 'body {--color-text:#ffffff;}', r"FAIL light")
         self.contrast(css + '@supports (display:grid) {:root {--color-text:#ffffff;}}', r"FAIL light")
 
+    # Later render batches reject media-dependent denied names and missing resources, with clean controls.
+    def test_rendered_batch_boundaries(self):
+        for index in range(9):
+            self.put(f"page-{index}.html", "<p>Public text</p>")
+        environment = {"IDENT_DENY_TOKENS": "zzreviewomega"}
+        self.run_check("check_hygiene.py", env=environment)
+        rule = 'button::before {content:attr(data-prefix) " " attr(data-suffix)}'
+        for media in ['(prefers-color-scheme:dark)', '(max-width:640px)', '(forced-colors:active)']:
+            self.put("page-8.html", '<style>@media' + media + '{' + rule + '}</style>'
+                     '<button data-prefix="zz review" data-suffix="omega"></button>')
+            result = self.run_check("check_hygiene.py", "deny-token", environment)
+            self.assertNotIn("zz review omega", result.stdout + result.stderr)
+        self.put("page-8.html", '<link rel="stylesheet" href="missing.css"><p>Public text</p>')
+        self.run_check("check_hygiene.py", "publication-decode", environment)
+        self.put("missing.css", "p {color:inherit}")
+        self.run_check("check_hygiene.py", env=environment)
+
     # Real production scripts reject the review witnesses in a complete source copy, with a clean-copy control first.
     def test_complete_repository_regressions(self):
         publication = self.root / "publication"
