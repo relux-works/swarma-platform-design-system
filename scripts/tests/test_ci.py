@@ -891,6 +891,23 @@ try {
                             decoder.documents(records[:9], rendered=True, root=self.root)
                 self.assertEqual(calls, [8, 1])
 
+        # Exit-zero results must still contain one result per document in the late batch.
+        for malformed in [[], {"source": "Public text 8"}]:
+            with self.subTest(malformed=malformed):
+                calls = []
+
+                def malformed_late(command, **options):
+                    calls.append(len(json.loads(options["input"])["documents"]))
+                    if len(calls) == 2:
+                        return subprocess.CompletedProcess(command, 0, json.dumps(malformed), "")
+                    return engine(command, **options)
+
+                with patch.object(decoder.subprocess, "run", side_effect=malformed_late):
+                    with self.assertRaisesRegex(ValueError, "^invalid publication result$"):
+                        decoder.documents(records[:9], rendered=True, root=self.root)
+                self.assertEqual(calls, [8, 1])
+
+    def test_rendered_batch_publication_failures(self):
         # Real browser controls also reject media-dependent denied names and missing resources in later batches.
         for index in range(9):
             self.put(f"page-{index}.html", "<p>Public text</p>")
