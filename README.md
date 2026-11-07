@@ -8,7 +8,7 @@ Start with [SKILL.md](SKILL.md) and its resource map. The design provenance is r
 
 The checks use Node 22.23.4 or newer, Python 3.12 or newer and Chromium through Playwright.
 Node dependencies are exact versions in `package.json` and `package-lock.json`.
-CI installs Node 22 and Python 3.14 with setup actions on self-hosted `relux-generic` Linux x64 runners.
+CI installs Node 22 and Python 3.14 with setup actions on GitHub-hosted Linux (`ubuntu-latest`) runners.
 From the repository root, install the locked dependencies and browser:
 
 ```sh
@@ -19,7 +19,8 @@ npx playwright install chromium
 
 Keep that environment variable set for subsequent checks. A local installed Chromium can instead
 be selected with `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`; record its version in validation evidence.
-CI installs the browser version selected by the locked Playwright dependency.
+CI installs the browser version selected by the locked Playwright dependency and its system dependencies
+with `npx playwright install --with-deps chromium`.
 
 | Tool / command | Purpose | Output |
 | --- | --- | --- |
